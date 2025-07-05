@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -20,24 +20,48 @@ interface MessageBubbleProps {
 const { width: screenWidth } = Dimensions.get('window');
 const isTablet = screenWidth > 768;
 
-export function MessageBubble({
+const MessageBubbleComponent = ({
   message,
   onRetry,
   onPlayAudio,
   isAudioPlaying,
-}: MessageBubbleProps) {
+}: MessageBubbleProps) => {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
   
-  const formatTime = (timestamp: Date) => {
+  // Memoize expensive calculations
+  const formattedTime = useMemo(() => {
     return new Intl.DateTimeFormat('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
-    }).format(timestamp);
-  };
+    }).format(message.timestamp);
+  }, [message.timestamp]);
 
-  const renderError = () => (
+  // Memoize style calculations
+  const containerStyle = useMemo(() => [
+    styles.messageContainer,
+    isUser ? styles.userMessageContainer : styles.assistantMessageContainer,
+  ], [isUser]);
+
+  const bubbleStyle = useMemo(() => [
+    styles.bubble,
+    isUser ? styles.userBubble : styles.assistantBubble,
+    message.error && styles.errorBubble,
+  ], [isUser, message.error]);
+
+  const messageTextStyle = useMemo(() => [
+    styles.messageText,
+    isUser ? styles.userMessageText : styles.assistantMessageText,
+  ], [isUser]);
+
+  const timestampStyle = useMemo(() => [
+    styles.timestamp,
+    isUser ? styles.userTimestamp : styles.assistantTimestamp,
+  ], [isUser]);
+
+  // Memoize render functions
+  const renderError = useCallback(() => (
     <View style={styles.errorContainer}>
       <Text style={styles.errorText}>Failed to send message</Text>
       {onRetry && (
@@ -46,18 +70,18 @@ export function MessageBubble({
         </TouchableOpacity>
       )}
     </View>
-  );
+  ), [onRetry]);
 
-  const renderLoadingIndicator = () => (
+  const renderLoadingIndicator = useCallback(() => (
     <View style={styles.loadingContainer}>
       <ActivityIndicator size="small" color="#666" />
       <Text style={styles.loadingText}>
         {isUser ? 'Sending...' : 'Thinking...'}
       </Text>
     </View>
-  );
+  ), [isUser]);
 
-  const renderAudioButton = () => {
+  const renderAudioButton = useCallback(() => {
     if (!message.audioUrl) return null;
     
     return (
@@ -71,9 +95,9 @@ export function MessageBubble({
         </Text>
       </TouchableOpacity>
     );
-  };
+  }, [message.audioUrl, onPlayAudio, isAudioPlaying]);
 
-  const renderTokenCount = () => {
+  const renderTokenCount = useCallback(() => {
     if (!message.tokenCount) return null;
     
     return (
@@ -81,37 +105,24 @@ export function MessageBubble({
         {message.tokenCount} tokens
       </Text>
     );
-  };
+  }, [message.tokenCount]);
 
   return (
-    <View style={[
-      styles.messageContainer,
-      isUser ? styles.userMessageContainer : styles.assistantMessageContainer,
-    ]}>
-      <View style={[
-        styles.bubble,
-        isUser ? styles.userBubble : styles.assistantBubble,
-        message.error && styles.errorBubble,
-      ]}>
+    <View style={containerStyle}>
+      <View style={bubbleStyle}>
         {message.isLoading ? (
           renderLoadingIndicator()
         ) : (
           <>
-            <Text style={[
-              styles.messageText,
-              isUser ? styles.userMessageText : styles.assistantMessageText,
-            ]}>
+            <Text style={messageTextStyle}>
               {message.content}
             </Text>
             
             {message.error && renderError()}
             
             <View style={styles.messageFooter}>
-              <Text style={[
-                styles.timestamp,
-                isUser ? styles.userTimestamp : styles.assistantTimestamp,
-              ]}>
-                {formatTime(message.timestamp)}
+              <Text style={timestampStyle}>
+                {formattedTime}
               </Text>
               
               {renderTokenCount()}
@@ -122,7 +133,19 @@ export function MessageBubble({
       </View>
     </View>
   );
-}
+};
+
+// Export memoized component with custom comparison
+export const MessageBubble = memo(MessageBubbleComponent, (prevProps, nextProps) => {
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.content === nextProps.message.content &&
+    prevProps.message.isLoading === nextProps.message.isLoading &&
+    prevProps.message.error === nextProps.message.error &&
+    prevProps.isAudioPlaying === nextProps.isAudioPlaying &&
+    prevProps.message.timestamp.getTime() === nextProps.message.timestamp.getTime()
+  );
+});
 
 const styles = StyleSheet.create({
   messageContainer: {

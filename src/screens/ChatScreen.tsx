@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
 import {
   View,
   FlatList,
@@ -22,13 +22,15 @@ import { RootStackParamList } from '@/navigation/AppNavigator';
 import { convertOpenAIResponseToMessage, generateConversationTitle, getSystemPrompt } from '@/utils/openai';
 import { ConversationStorageService } from '@/services/conversationStorage';
 import { Conversation } from '@/types';
+import { MessageSkeleton } from '@/components/SkeletonLoader';
+import { performanceMonitor, measureAsync } from '@/utils/performanceMonitor';
 
 type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
 
 const { width: screenWidth } = Dimensions.get('window');
 const isTablet = screenWidth > 768;
 
-export function ChatScreen() {
+const ChatScreenComponent = () => {
   const route = useRoute<ChatScreenRouteProp>();
   const navigation = useNavigation();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -40,6 +42,14 @@ export function ChatScreen() {
   const [conversationTitle, setConversationTitle] = useState('New Conversation');
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+
+  // Performance tracking
+  useEffect(() => {
+    performanceMonitor.trackComponentMount('ChatScreen');
+    return () => {
+      performanceMonitor.trackComponentUnmount('ChatScreen');
+    };
+  }, []);
 
   const {
     isLoading: openAILoading,
@@ -89,23 +99,25 @@ export function ChatScreen() {
     }
   }, [conversationId]);
 
-  const loadConversation = async (loadConversationId: string) => {
-    try {
-      setIsLoading(true);
-      const loadedConversation = await ConversationStorageService.loadConversation(loadConversationId);
-      if (loadedConversation) {
-        setConversation(loadedConversation);
-        setMessages(loadedConversation.messages);
-        setConversationTitle(loadedConversation.title);
-        setConversationHistory(loadedConversation.messages);
+  const loadConversation = useCallback(async (loadConversationId: string) => {
+    await measureAsync('load_conversation', async () => {
+      try {
+        setIsLoading(true);
+        const loadedConversation = await ConversationStorageService.loadConversation(loadConversationId);
+        if (loadedConversation) {
+          setConversation(loadedConversation);
+          setMessages(loadedConversation.messages);
+          setConversationTitle(loadedConversation.title);
+          setConversationHistory(loadedConversation.messages);
+        }
+      } catch (error) {
+        console.error('Error loading conversation:', error);
+        Alert.alert('Error', 'Failed to load conversation');
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('Error loading conversation:', error);
-      Alert.alert('Error', 'Failed to load conversation');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    }, { conversationId: loadConversationId, messageCount: messages.length });
+  }, [setConversationHistory]);
 
   const generateMessageId = () => {
     return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -236,23 +248,28 @@ export function ChatScreen() {
     setIsSidebarVisible(prev => !prev);
   }, []);
 
-  const renderMessage = ({ item }: { item: Message }) => (
+  // Memoized render functions for better performance
+  const renderMessage = useCallback(({ item }: { item: Message }) => (
     <MessageBubble
       message={item}
       onRetry={() => handleRetryMessage(item.id)}
       onPlayAudio={() => handlePlayAudio(item.id)}
       isAudioPlaying={currentPlayingAudio === item.id}
     />
-  );
+  ), [handleRetryMessage, handlePlayAudio, currentPlayingAudio]);
 
-  const renderEmptyState = () => (
+  const renderLoadingMessage = useCallback(() => (
+    <MessageSkeleton isUser={false} />
+  ), []);
+
+  const renderEmptyState = useCallback(() => (
     <View style={styles.emptyState}>
       <Text style={styles.emptyStateTitle}>Start a conversation</Text>
       <Text style={styles.emptyStateText}>
         Type a message or tap the microphone to start talking
       </Text>
     </View>
-  );
+  ), []);
 
   const renderHeader = () => (
     <View style={styles.header}>
@@ -305,6 +322,20 @@ export function ChatScreen() {
             />
           }
           ListEmptyComponent={renderEmptyState}
+          ListFooterComponent={openAILoading ? renderLoadingMessage : undefined}
+          removeClippedSubviews={Platform.OS === 'android'}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          initialNumToRender={15}
+          getItemLayout={(data, index) => ({
+            length: 100, // Approximate message height
+            offset: 100 * index,
+            index,
+          })}
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0,
+            autoscrollToTopThreshold: 10,
+          }}
         />
         
         <ChatInputWithVoice
@@ -335,7 +366,10 @@ export function ChatScreen() {
       />
     </SafeAreaView>
   );
-}
+};
+
+// Export memoized component
+export const ChatScreen = memo(ChatScreenComponent);
 
 const styles = StyleSheet.create({
   container: {

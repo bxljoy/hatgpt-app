@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Conversation, ConversationSearchFilters } from '@/types';
 import { ConversationStorageService } from '@/services/conversationStorage';
+import { ConversationListSkeleton } from './SkeletonLoader';
 
 interface ConversationSidebarProps {
   isVisible: boolean;
@@ -33,24 +34,25 @@ interface ConversationItemProps {
   onDelete: () => void;
 }
 
-function ConversationItem({ conversation, isSelected, onPress, onDelete }: ConversationItemProps) {
-  const formatDate = (date: Date) => {
+const ConversationItem = memo(({ conversation, isSelected, onPress, onDelete }: ConversationItemProps) => {
+  // Memoize expensive calculations
+  const formattedDate = useMemo(() => {
     const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
+    const diffMs = now.getTime() - conversation.lastActivity.getTime();
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
     
     if (diffDays === 0) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return conversation.lastActivity.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } else if (diffDays === 1) {
       return 'Yesterday';
     } else if (diffDays < 7) {
-      return date.toLocaleDateString([], { weekday: 'short' });
+      return conversation.lastActivity.toLocaleDateString([], { weekday: 'short' });
     } else {
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      return conversation.lastActivity.toLocaleDateString([], { month: 'short', day: 'numeric' });
     }
-  };
+  }, [conversation.lastActivity]);
 
-  const getPreviewText = () => {
+  const previewText = useMemo(() => {
     const lastMessage = conversation.messages[conversation.messages.length - 1];
     if (lastMessage) {
       return lastMessage.content.length > 50 
@@ -58,23 +60,33 @@ function ConversationItem({ conversation, isSelected, onPress, onDelete }: Conve
         : lastMessage.content;
     }
     return 'No messages';
-  };
+  }, [conversation.messages]);
+
+  // Memoize styles
+  const itemStyle = useMemo(() => [
+    styles.conversationItem,
+    isSelected && styles.selectedConversationItem,
+  ], [isSelected]);
+
+  const titleStyle = useMemo(() => [
+    styles.conversationTitle,
+    isSelected && styles.selectedConversationTitle,
+  ], [isSelected]);
+
+  const previewStyle = useMemo(() => [
+    styles.conversationPreview,
+    isSelected && styles.selectedConversationPreview,
+  ], [isSelected]);
 
   return (
     <TouchableOpacity
-      style={[
-        styles.conversationItem,
-        isSelected && styles.selectedConversationItem,
-      ]}
+      style={itemStyle}
       onPress={onPress}
       activeOpacity={0.7}
     >
       <View style={styles.conversationHeader}>
         <Text 
-          style={[
-            styles.conversationTitle,
-            isSelected && styles.selectedConversationTitle,
-          ]} 
+          style={titleStyle} 
           numberOfLines={1}
         >
           {conversation.title}
@@ -89,63 +101,111 @@ function ConversationItem({ conversation, isSelected, onPress, onDelete }: Conve
       </View>
       
       <Text 
-        style={[
-          styles.conversationPreview,
-          isSelected && styles.selectedConversationPreview,
-        ]} 
+        style={previewStyle} 
         numberOfLines={2}
       >
-        {getPreviewText()}
+        {previewText}
       </Text>
       
       <Text style={styles.conversationDate}>
-        {formatDate(conversation.lastActivity)}
+        {formattedDate}
       </Text>
     </TouchableOpacity>
   );
-}
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.conversation.id === nextProps.conversation.id &&
+    prevProps.conversation.title === nextProps.conversation.title &&
+    prevProps.conversation.lastActivity.getTime() === nextProps.conversation.lastActivity.getTime() &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.conversation.messages.length === nextProps.conversation.messages.length
+  );
+});
 
-export function ConversationSidebar({
+const ConversationSidebarComponent = ({
   isVisible,
   onClose,
   onConversationSelect,
   onNewConversation,
   currentConversationId,
-}: ConversationSidebarProps) {
+}: ConversationSidebarProps) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(0);
+
+  const ITEMS_PER_PAGE = 20;
 
   // Animation values
   const slideAnim = useRef(new Animated.Value(-screenWidth * 0.8)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
 
-  // Load conversations
-  const loadConversations = useCallback(async () => {
+  // Load conversations with pagination
+  const loadConversations = useCallback(async (reset = false) => {
     try {
       setIsLoading(true);
+      const currentPage = reset ? 0 : page;
+      
       const searchFilters: ConversationSearchFilters = {
         sortBy: 'lastActivity',
         sortOrder: 'desc',
         isArchived: false,
         query: searchQuery.trim() || undefined,
+        limit: ITEMS_PER_PAGE,
+        offset: currentPage * ITEMS_PER_PAGE,
       };
       
       const loadedConversations = await ConversationStorageService.getConversations(searchFilters);
-      setConversations(loadedConversations);
+      
+      if (reset) {
+        setConversations(loadedConversations);
+        setPage(0);
+      } else {
+        // Prevent duplicate conversations when appending
+        setConversations(prev => {
+          const existingIds = new Set(prev.map(conv => conv.id));
+          const newConversations = loadedConversations.filter(conv => !existingIds.has(conv.id));
+          return [...prev, ...newConversations];
+        });
+      }
+      
+      setHasMore(loadedConversations.length === ITEMS_PER_PAGE);
+      if (!reset) setPage(prev => prev + 1);
     } catch (error) {
       console.error('Failed to load conversations:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery]);
+  }, [searchQuery, page, ITEMS_PER_PAGE]);
 
-  // Load conversations on mount and when search changes
+  // Load more conversations (pagination)
+  const loadMoreConversations = useCallback(() => {
+    if (!isLoading && hasMore) {
+      loadConversations(false);
+    }
+  }, [isLoading, hasMore, loadConversations]);
+
+  // Load conversations on mount
   useEffect(() => {
     if (isVisible) {
-      loadConversations();
+      loadConversations(true);
     }
-  }, [isVisible, loadConversations]);
+  }, [isVisible]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced search - separate from mount effect
+  useEffect(() => {
+    if (!isVisible) return;
+    
+    const timer = setTimeout(() => {
+      // Reset pagination when search changes
+      setPage(0);
+      setHasMore(true);
+      loadConversations(true);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle sidebar animation
   useEffect(() => {
@@ -227,13 +287,32 @@ export function ConversationSidebar({
   ), [currentConversationId, handleConversationSelect, handleDeleteConversation]);
 
   // Render empty state
-  const renderEmptyState = useCallback(() => (
-    <View style={styles.emptyState}>
-      <Text style={styles.emptyStateText}>
-        {searchQuery ? 'No conversations found' : 'No conversations yet'}
-      </Text>
-    </View>
-  ), [searchQuery]);
+  const renderEmptyState = useCallback(() => {
+    if (isLoading) {
+      return <ConversationListSkeleton count={5} />;
+    }
+    
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyStateText}>
+          {searchQuery ? 'No conversations found' : 'No conversations yet'}
+        </Text>
+      </View>
+    );
+  }, [searchQuery, isLoading]);
+
+  // Render footer with loading indicator
+  const renderFooter = useCallback(() => {
+    if (!hasMore || isLoading) {
+      return null;
+    }
+    
+    return (
+      <View style={styles.loadingFooter}>
+        <ConversationListSkeleton count={2} />
+      </View>
+    );
+  }, [hasMore, isLoading]);
 
   if (!isVisible) return null;
 
@@ -296,15 +375,27 @@ export function ConversationSidebar({
             contentContainerStyle={styles.conversationsContainer}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={renderEmptyState}
+            ListFooterComponent={renderFooter}
+            onEndReached={loadMoreConversations}
+            onEndReachedThreshold={0.1}
             removeClippedSubviews={Platform.OS === 'android'}
-            maxToRenderPerBatch={15}
-            windowSize={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            initialNumToRender={10}
+            getItemLayout={(data, index) => ({
+              length: 80, // Approximate item height
+              offset: 80 * index,
+              index,
+            })}
           />
         </SafeAreaView>
       </Animated.View>
     </View>
   );
-}
+};
+
+// Export memoized component
+export const ConversationSidebar = memo(ConversationSidebarComponent);
 
 const styles = StyleSheet.create({
   container: {
@@ -454,5 +545,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#8E8E93',
     textAlign: 'center',
+  },
+  loadingFooter: {
+    paddingVertical: 10,
   },
 });
