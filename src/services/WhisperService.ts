@@ -103,6 +103,18 @@ export class WhisperService {
   private handleAxiosError(error: AxiosError): OpenAIError {
     const response = error.response;
     
+    // Check if request was cancelled
+    if (error.code === 'ERR_CANCELED' || error.message?.includes('canceled') || error.message?.includes('cancelled')) {
+      return {
+        error: {
+          message: 'Request was cancelled',
+          type: 'cancelled_error',
+          param: null,
+          code: 'cancelled',
+        },
+      };
+    }
+    
     if (response?.data && typeof response.data === 'object' && 'error' in response.data) {
       return response.data as OpenAIError;
     }
@@ -157,9 +169,10 @@ export class WhisperService {
       }
 
       // Check file size
-      if (fileInfo.size && fileInfo.size > this.config.maxFileSize) {
+      const fileSize = (fileInfo as any).size || 0;
+      if (fileSize && fileSize > this.config.maxFileSize) {
         const maxSizeMB = Math.round(this.config.maxFileSize / (1024 * 1024));
-        const fileSizeMB = Math.round(fileInfo.size / (1024 * 1024));
+        const fileSizeMB = Math.round(fileSize / (1024 * 1024));
         return {
           isValid: false,
           error: `File size (${fileSizeMB}MB) exceeds maximum allowed size (${maxSizeMB}MB)`,
@@ -273,6 +286,11 @@ export class WhisperService {
 
   private shouldRetryError(error: any, retryCount: number): boolean {
     if (retryCount >= this.config.maxRetries) {
+      return false;
+    }
+
+    // Don't retry cancelled requests
+    if (error.error?.type === 'cancelled_error' || error.error?.code === 'cancelled') {
       return false;
     }
 
@@ -515,14 +533,15 @@ let whisperServiceInstance: WhisperService | null = null;
 
 export function getWhisperService(): WhisperService {
   if (!whisperServiceInstance) {
-    const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    // Get API key from environment (provided by the app)
+    const envApiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
     
-    if (!apiKey) {
-      throw new Error('OpenAI API key not found. Please set EXPO_PUBLIC_OPENAI_API_KEY in your environment variables.');
+    if (!envApiKey) {
+      throw new Error('OpenAI API key not configured. Please contact app support.');
     }
 
     whisperServiceInstance = new WhisperService({
-      apiKey,
+      apiKey: envApiKey,
     });
   }
 

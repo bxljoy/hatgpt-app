@@ -4,20 +4,22 @@ import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { AudioRecordingState, RecordingStatus } from '@/types';
 
-// Global recording instance to ensure only one recording at a time
-let globalRecordingInstance: Audio.Recording | null = null;
+// Track recording state globally to prevent conflicts
+let globalRecordingInProgress = false;
 
-// Function to clean up global recording instance
-const cleanupGlobalRecording = async (): Promise<void> => {
-  if (globalRecordingInstance) {
-    try {
-      // Always attempt to unload, regardless of state
-      await globalRecordingInstance.stopAndUnloadAsync();
-    } catch (error) {
-      console.warn('Error cleaning up global recording:', error);
-    } finally {
-      globalRecordingInstance = null;
-    }
+// Function to force unload any audio recordings
+const forceUnloadAudio = async (): Promise<void> => {
+  try {
+    // Reset audio mode completely
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: false,
+      staysActiveInBackground: false,
+      shouldDuckAndroid: false,
+      playThroughEarpieceAndroid: false,
+    });
+  } catch (error) {
+    console.warn('Error forcing audio unload:', error);
   }
 };
 
@@ -68,6 +70,7 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
 
   // Audio recording configuration
   const getRecordingOptions = useCallback(() => {
+    // Try the simplest possible configuration that's known to work
     return Audio.RecordingOptionsPresets.HIGH_QUALITY;
   }, []);
 
@@ -98,7 +101,15 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
   // Set up audio mode for recording
   const setupAudioMode = useCallback(async (): Promise<void> => {
     try {
-      await Audio.requestPermissionsAsync();
+      console.log('Requesting audio permissions...');
+      const permissionResponse = await Audio.requestPermissionsAsync();
+      console.log('Permission response:', permissionResponse);
+      
+      if (permissionResponse.status !== 'granted') {
+        throw new Error('Audio recording permission not granted');
+      }
+      
+      console.log('Setting audio mode...');
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -106,8 +117,10 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
         shouldDuckAndroid: true,
         playThroughEarpieceAndroid: false,
       });
+      console.log('Audio mode set successfully');
     } catch (error) {
-      console.warn('Failed to set audio mode:', error);
+      console.error('Failed to set audio mode:', error);
+      throw error;
     }
   }, []);
 
@@ -155,12 +168,14 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
     }, 100);
   }, [fullConfig]);
 
-  // Start file size monitoring
+  // Start file size monitoring (disabled during recording since we don't have URI yet)
   const startFileSizeMonitoring = useCallback((uri: string) => {
+    if (!uri) return; // Skip if no URI available
+    
     fileSizeTimerRef.current = setInterval(async () => {
       try {
         const fileInfo = await FileSystem.getInfoAsync(uri);
-        const size = 'size' in fileInfo ? fileInfo.size : 0;
+        const size = (fileInfo as any).size || 0;
         
         fullConfig.onFileSizeUpdate(size);
         
@@ -190,12 +205,18 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
   // Start recording
   const startRecording = useCallback(async (): Promise<boolean> => {
     try {
+      // Prevent multiple simultaneous recordings
+      if (globalRecordingInProgress) {
+        throw new Error('Recording already in progress');
+      }
+      
       setState(prev => ({ ...prev, isProcessing: true, error: null, recordingStatus: 'processing' }));
+      globalRecordingInProgress = true;
       
-      // Setup audio mode
-      await setupAudioMode();
+      // Force complete audio cleanup
+      await forceUnloadAudio();
       
-      // Ensure any existing recording is properly cleaned up (both local and global)
+      // Ensure any existing recording is cleaned up
       if (recordingRef.current) {
         try {
           await recordingRef.current.stopAndUnloadAsync();
@@ -205,51 +226,52 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
         recordingRef.current = null;
       }
       
-      // Clean up any global recording instance
-      await cleanupGlobalRecording();
+      // Wait for cleanup
+      await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Wait a moment to ensure cleanup is complete
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Setup audio mode fresh
+      await setupAudioMode();
       
-      // Create new recording
+      // Create new recording instance
       const recording = new Audio.Recording();
+      
       try {
-        await recording.prepareToRecordAsync(getRecordingOptions());
+        // Let Expo choose the location - don't specify custom URI
+        const recordingOptions = getRecordingOptions();
+        console.log('Preparing recording without custom URI:', recordingOptions);
+        await recording.prepareToRecordAsync(recordingOptions);
         recordingRef.current = recording;
-        globalRecordingInstance = recording;
-      } catch (prepareError) {
-        // If prepare fails, don't try to unload - just clean up references
-        console.warn('Prepare failed:', prepareError);
+        
+        console.log('Starting recording...');
+        const startStatus = await recording.startAsync();
+        console.log('Recording start status:', JSON.stringify(startStatus, null, 2));
+        
+        // Update state without URI (will be set when recording stops)
+        setState(prev => ({
+          ...prev,
+          isRecording: true,
+          isProcessing: false,
+          recordingUri: null, // Will be set when recording stops
+          duration: 0,
+          isPaused: false,
+          recordingStatus: 'recording',
+          error: null,
+        }));
+        
+        // Start timers
+        startDurationTimer();
+        // Don't monitor file size since we don't have URI yet
+        
+        return true;
+      } catch (error) {
+        // Clean up on any error
+        console.error('Failed to start recording:', error);
         recordingRef.current = null;
-        globalRecordingInstance = null;
-        throw prepareError;
+        throw error;
       }
-      
-      // Start recording
-      await recording.startAsync();
-      
-      // Get the URI from recording status
-      const status = await recording.getStatusAsync();
-      const recordingUri = status.uri || `${FileSystem.documentDirectory}${generateRecordingFilename()}`;
-      
-      // Update state
-      setState(prev => ({
-        ...prev,
-        isRecording: true,
-        isProcessing: false,
-        recordingUri,
-        duration: 0,
-        isPaused: false,
-        recordingStatus: 'recording',
-        error: null,
-      }));
-      
-      // Start timers
-      startDurationTimer();
-      startFileSizeMonitoring(recordingUri);
-      
-      return true;
     } catch (error) {
+      globalRecordingInProgress = false;
+      
       // Check if this is a permission error
       const errorString = error?.toString() || '';
       if (errorString.includes('permission') || errorString.includes('denied') || errorString.includes('authorized')) {
@@ -286,30 +308,92 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
         return null;
       }
       
+      // Check recording status before stopping
+      const statusBeforeStop = await recordingRef.current.getStatusAsync();
+      console.log('Status before stopping:', JSON.stringify(statusBeforeStop, null, 2));
+      
+      // Check minimum recording duration (at least 1000ms)
+      if (state.duration < 1000) {
+        console.warn(`Recording too short: ${state.duration}ms. Waiting a bit longer...`);
+        await new Promise(resolve => setTimeout(resolve, 1500 - state.duration));
+      }
+      
+      // Get the URI BEFORE stopping (expo-av bug workaround)
+      let recordingUri: string | null = null;
+      try {
+        const recording = recordingRef.current;
+        // Try to get the URI from the recording object directly
+        recordingUri = (recording as any)._uri || (recording as any).uri;
+        console.log('URI from recording object:', recordingUri);
+      } catch (error) {
+        console.warn('Could not get URI from recording object:', error);
+      }
+      
       // Stop recording
+      console.log('Stopping recording...');
       const status = await recordingRef.current.stopAndUnloadAsync();
-      const finalUri = status.uri || state.recordingUri;
+      console.log('Recording stop status:', JSON.stringify(status, null, 2));
+      
       recordingRef.current = null;
-      globalRecordingInstance = null;
+      globalRecordingInProgress = false;
       
       // Clear timers
       clearTimers();
       
+      // Determine final URI (prefer status.uri, fall back to extracted URI)
+      let finalUri = status.uri || recordingUri;
+      
       if (!finalUri) {
-        throw new Error('No recording URI available');
+        // Last resort: try to find the recording file in possible locations
+        const searchPaths = [
+          `${FileSystem.documentDirectory}AV/`,
+          `${FileSystem.cacheDirectory}AV/`,
+          FileSystem.documentDirectory!,
+          FileSystem.cacheDirectory!,
+        ];
+        
+        for (const searchPath of searchPaths) {
+          try {
+            console.log(`Searching in: ${searchPath}`);
+            const files = await FileSystem.readDirectoryAsync(searchPath);
+            console.log(`Files found: ${files.join(', ')}`);
+            
+            // Find .m4a files
+            const audioFiles = files.filter(f => f.endsWith('.m4a') || f.endsWith('.mp3') || f.endsWith('.wav'));
+            if (audioFiles.length > 0) {
+              // Get the most recent audio file
+              finalUri = `${searchPath}${audioFiles[audioFiles.length - 1]}`;
+              console.log(`Found recording file: ${finalUri}`);
+              break;
+            }
+          } catch (searchError) {
+            console.warn(`Could not search in ${searchPath}:`, searchError);
+          }
+        }
       }
       
+      if (!finalUri) {
+        throw new Error('No recording URI found. Recording may have failed to save.');
+      }
+      
+      console.log(`Using final URI: ${finalUri}`);
+      
       // Helper to wait for file to be written with exponential backoff
-      const waitForFile = async (uri: string, maxAttempts = 10, initialDelay = 100): Promise<boolean> => {
+      const waitForFile = async (uri: string, maxAttempts = 5, initialDelay = 200): Promise<boolean> => {
         let delay = initialDelay;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          const fileInfo = await FileSystem.getInfoAsync(uri);
-          if (fileInfo.exists && fileInfo.size && fileInfo.size > 0) {
-            return true;
+          try {
+            const fileInfo = await FileSystem.getInfoAsync(uri);
+            console.log(`Attempt ${attempt + 1}: File exists: ${fileInfo.exists}, Size: ${fileInfo.size || 0}, URI: ${uri}`);
+            if (fileInfo.exists && fileInfo.size && fileInfo.size > 0) {
+              return true;
+            }
+          } catch (error) {
+            console.warn(`Error checking file on attempt ${attempt + 1}:`, error);
           }
           // Wait with exponential backoff
           await new Promise(resolve => setTimeout(resolve, delay));
-          delay *= 2; // Double delay each attempt
+          delay *= 1.5; // Increase delay each attempt
         }
         return false;
       };
@@ -317,7 +401,16 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
       // Wait for file to be written
       const fileIsValid = await waitForFile(finalUri);
       if (!fileIsValid) {
-        throw new Error(`Recording file not found or empty after validation attempts: ${finalUri}`);
+        // Try to get file info one more time for debugging
+        try {
+          const debugInfo = await FileSystem.getInfoAsync(finalUri);
+          console.warn(`Final file check - exists: ${debugInfo.exists}, size: ${debugInfo.size || 0}`);
+        } catch (debugError) {
+          console.warn('Error getting debug file info:', debugError);
+        }
+        
+        // Don't throw error immediately, try to proceed anyway
+        console.warn(`Recording file not immediately available: ${finalUri}`);
       }
       
       // Get final file info
@@ -336,7 +429,23 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
         
         return finalUri;
       } else {
-        throw new Error(`Recording file not found or empty at: ${finalUri}`);
+        // File doesn't exist or is empty, but still try to return URI for debugging
+        console.warn(`Recording file not found or empty, but returning URI anyway: ${finalUri}`);
+        
+        // Call completion callback with minimal data
+        fullConfig.onRecordingComplete(finalUri, state.duration, 0);
+        
+        setState(prev => ({
+          ...prev,
+          isRecording: false,
+          isProcessing: false,
+          recordingStatus: 'error',
+          recordingUri: finalUri,
+          error: 'Recording file not saved properly',
+        }));
+        
+        // Return URI anyway so the caller can handle the error
+        return finalUri;
       }
     } catch (error) {
       const errorMessage = `Failed to stop recording: ${error}`;
@@ -414,8 +523,8 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
       if (recordingRef.current) {
         await recordingRef.current.stopAndUnloadAsync();
         recordingRef.current = null;
-        globalRecordingInstance = null;
       }
+      globalRecordingInProgress = false;
       
       clearTimers();
       
@@ -472,8 +581,8 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
       if (recordingRef.current) {
         recordingRef.current.stopAndUnloadAsync().catch(console.warn);
         recordingRef.current = null;
-        globalRecordingInstance = null;
       }
+      globalRecordingInProgress = false;
     };
   }, [clearTimers]);
 

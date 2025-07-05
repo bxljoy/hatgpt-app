@@ -264,7 +264,7 @@ export class AudioService {
       // Update file information
       const fileInfo = await FileSystem.getInfoAsync(audioFile.uri);
       if (fileInfo.exists) {
-        audioFile.size = fileInfo.size || 0;
+        audioFile.size = (fileInfo as any).size || 0;
         audioFile.lastAccessed = new Date();
         
         // Get duration (this would require audio analysis)

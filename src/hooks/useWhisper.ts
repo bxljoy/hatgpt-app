@@ -83,9 +83,18 @@ export function useWhisper(options: UseWhisperOptions = {}) {
     customOptions?: Partial<TranscriptionOptions & UseWhisperOptions>
   ): Promise<TranscriptionResult | null> => {
     try {
+      // Prevent multiple simultaneous transcriptions
+      if (state.isTranscribing) {
+        console.warn('Transcription already in progress, ignoring new request');
+        return null;
+      }
+
       // Cancel any existing transcription
       if (abortControllerRef.current) {
+        console.log('Cancelling previous transcription');
         abortControllerRef.current.abort();
+        // Wait a bit for the cancellation to take effect
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       // Create new abort controller

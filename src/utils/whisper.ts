@@ -106,7 +106,7 @@ export function validateAudioFile(fileUri: string): Promise<{
         });
       }
 
-      const fileSize = fileInfo.size || 0;
+      const fileSize = (fileInfo as any).size || 0;
       const filename = fileUri.split('/').pop() || '';
       const fileExtension = filename.toLowerCase().substring(filename.lastIndexOf('.'));
       
@@ -350,7 +350,8 @@ export function getOptimalTranscriptionSettings(
 export async function verifyRecordingIntegrity(uri: string): Promise<boolean> {
   try {
     const fileInfo = await FileSystem.getInfoAsync(uri);
-    return !!(fileInfo.exists && fileInfo.size && fileInfo.size > 1024);
+    const fileSize = (fileInfo as any).size || 0;
+    return !!(fileInfo.exists && fileSize && fileSize > 1024);
   } catch (error) {
     return false;
   }

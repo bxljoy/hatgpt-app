@@ -253,8 +253,8 @@ export function ChatScreen() {
           isProcessing={openAILoading}
           disabled={isLoading || openAILoading}
           enableVoiceToText={true}
-          enableTextEditing={true}
-          autoCompleteOnTranscription={false}
+          enableTextEditing={false}
+          autoCompleteOnTranscription={true}
         />
         
         {openAIError && (

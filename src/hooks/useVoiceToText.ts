@@ -220,11 +220,24 @@ export function useVoiceToText(options: VoiceToTextOptions = {}): UseVoiceToText
   // Stop recording
   const stopRecording = useCallback(async () => {
     try {
-      await stopAudioRecording();
-      // State will be updated by onRecordingComplete callback
+      setState('processing');
+      const recordingUri = await stopAudioRecording();
+      
+      // If recording was successful and we have a URI, store it
+      // Note: handleRecordingComplete will be called via onRecordingComplete callback
+      // and will handle starting transcription, so we don't need to do it here
+      if (recordingUri) {
+        recordingUriRef.current = recordingUri;
+        // Let handleRecordingComplete handle the next steps via onRecordingComplete callback
+      } else {
+        // If no URI returned, there was likely an issue with the recording
+        throw new Error('Recording failed to save properly');
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to stop recording';
       handleError(errorMessage, 'recording');
+      // Reset to idle state on error
+      setState('idle');
     }
   }, [stopAudioRecording, handleError]);
 

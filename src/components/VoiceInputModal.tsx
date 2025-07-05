@@ -55,6 +55,7 @@ export function VoiceInputModal({
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const spinAnim = useRef(new Animated.Value(0)).current;
 
   // Voice-to-text hook
   const {
@@ -175,6 +176,23 @@ export function VoiceInputModal({
     }
   }, [state]);
 
+  // Spin animation for processing state
+  useEffect(() => {
+    if (isProcessing) {
+      const spinAnimation = Animated.loop(
+        Animated.timing(spinAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        })
+      );
+      spinAnimation.start();
+      return () => spinAnimation.stop();
+    } else {
+      spinAnim.setValue(0);
+    }
+  }, [isProcessing]);
+
   // Update editable text when result changes
   useEffect(() => {
     if (result && enableTextEditing) {
@@ -255,21 +273,31 @@ export function VoiceInputModal({
         styles.recordButtonContainer,
         { transform: [{ scale: pulseAnim }] }
       ]}>
-        <VoiceRecordButtonAdvanced
-          size={120}
-          onRecordingStart={() => startRecording()}
-          onRecordingComplete={(uri, duration) => {
-            // Handle recording completion
-            stopRecording();
-          }}
-          onRecordingError={(error) => {
-            console.error('Recording error:', error);
+        <TouchableOpacity
+          style={[styles.recordButton, {
+            width: 120,
+            height: 120,
+            borderRadius: 60,
+            backgroundColor: state === 'recording' ? '#FF3B30' : '#007AFF',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }]}
+          onPress={async () => {
+            if (state === 'idle') {
+              await startRecording();
+            } else if (state === 'recording') {
+              await stopRecording();
+            }
           }}
           disabled={state === 'transcribing' || state === 'editing'}
-          maxDuration={maxRecordingDuration}
-          quality="medium"
-          style={styles.recordButton}
-        />
+        >
+          <Text style={{
+            color: 'white',
+            fontSize: 32,
+          }}>
+            {state === 'recording' ? '⏹️' : '🎤'}
+          </Text>
+        </TouchableOpacity>
       </Animated.View>
 
       <View style={styles.statusContainer}>
@@ -282,12 +310,6 @@ export function VoiceInputModal({
             {formatDuration(progress.recordingDuration)}
           </Text>
         )}
-
-        {!!result?.confidence && (
-          <Text style={styles.confidenceText}>
-            Confidence: {Math.round((result.confidence || 0) * 100)}%
-          </Text>
-        )}
       </View>
     </View>
   );
@@ -295,31 +317,26 @@ export function VoiceInputModal({
   const renderProgressIndicator = () => {
     if (!isProcessing) return null;
 
+    const spin = spinAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: ['0deg', '360deg'],
+    });
+
     return (
       <View style={styles.progressContainer}>
-        <AudioProcessingLoader
-          isVisible={true}
-          type={state === 'transcribing' ? 'transcribing' : 'processing'}
-          message={getStateMessage()}
-          progress={progress.transcriptionProgress}
-          size="small"
-        />
-        
-        {progress.transcriptionProgress !== undefined && (
-          <View style={styles.progressBarContainer}>
-            <View style={styles.progressBar}>
-              <View 
-                style={[
-                  styles.progressBarFill,
-                  { width: `${progress.transcriptionProgress || 0}%` }
-                ]}
-              />
-            </View>
-            <Text style={styles.progressText}>
-              {Math.round(progress.transcriptionProgress || 0)}%
-            </Text>
+        <View style={styles.processingIndicator}>
+          <View style={styles.spinnerContainer}>
+            <Animated.View 
+              style={[
+                styles.spinner,
+                { transform: [{ rotate: spin }] }
+              ]} 
+            />
           </View>
-        )}
+          <Text style={styles.processingText}>
+            {state === 'transcribing' ? 'Processing...' : 'Preparing...'}
+          </Text>
+        </View>
       </View>
     );
   };
@@ -578,29 +595,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 20,
   },
-  progressBarContainer: {
-    flexDirection: 'row',
+  processingIndicator: {
     alignItems: 'center',
-    width: '100%',
-    marginTop: 16,
+    justifyContent: 'center',
   },
-  progressBar: {
-    flex: 1,
-    height: 4,
-    backgroundColor: '#E5E5EA',
-    borderRadius: 2,
-    marginRight: 12,
+  spinnerContainer: {
+    width: 40,
+    height: 40,
+    marginBottom: 16,
   },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#007AFF',
-    borderRadius: 2,
+  spinner: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: '#E5E5EA',
+    borderTopColor: '#007AFF',
   },
-  progressText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#007AFF',
-    minWidth: 40,
+  processingText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#666666',
+    textAlign: 'center',
   },
   editorContainer: {
     flex: 1,
