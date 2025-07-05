@@ -123,19 +123,63 @@ const ChatScreenComponent = () => {
     return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   };
 
+  const generateConversationTitle = useCallback((messages: Message[]): string => {
+    // Find the first user message
+    const firstUserMessage = messages.find(msg => msg.role === 'user');
+    if (!firstUserMessage) return 'New Conversation';
+
+    let content = firstUserMessage.content.trim();
+    
+    // Remove common question prefixes
+    content = content.replace(/^(what|how|why|when|where|who|can you|could you|please|help me|i need|i want)/i, '');
+    content = content.trim();
+    
+    // If content is empty after cleaning, use original
+    if (!content) {
+      content = firstUserMessage.content.trim();
+    }
+    
+    // Truncate to reasonable length and clean up
+    if (content.length > 50) {
+      content = content.substring(0, 47) + '...';
+    }
+    
+    // Remove trailing punctuation and capitalize first letter
+    content = content.replace(/[.!?]+$/, '');
+    content = content.charAt(0).toUpperCase() + content.slice(1);
+    
+    // If it's still too generic or empty, use a time-based title
+    if (!content || content.length < 3 || /^(hi|hello|hey|test)$/i.test(content)) {
+      const now = new Date();
+      return `Chat ${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
+    
+    return content;
+  }, []);
+
   const saveCurrentConversation = async (currentMessages: Message[]) => {
     try {
       // Generate title if this is a new conversation and we have messages
       let title = conversationTitle;
-      if (title === 'New Conversation' && currentMessages.length >= 2) {
-        // Generate title from first few messages
-        const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-        if (apiKey) {
-          try {
-            title = await ConversationStorageService.generateTitle(currentMessages, apiKey);
-            setConversationTitle(title);
-          } catch (error) {
-            console.warn('Failed to generate title, using default');
+      
+      if (title === 'New Conversation' && currentMessages.length >= 1) {
+        // First, generate a quick local title from the first message
+        title = generateConversationTitle(currentMessages);
+        setConversationTitle(title);
+        
+        // If we have 2+ messages, try to generate a better AI-powered title
+        if (currentMessages.length >= 2) {
+          const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+          if (apiKey) {
+            try {
+              const aiTitle = await ConversationStorageService.generateTitle(currentMessages, apiKey);
+              if (aiTitle && aiTitle !== title && aiTitle.length > 5) {
+                title = aiTitle;
+                setConversationTitle(title);
+              }
+            } catch (error) {
+              console.warn('Failed to generate AI title, keeping local title');
+            }
           }
         }
       }

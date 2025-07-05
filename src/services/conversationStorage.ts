@@ -132,15 +132,15 @@ export class ConversationStorageService {
           messages: [
             {
               role: 'system',
-              content: 'Generate a short, descriptive title (max 50 characters) for this conversation. Return only the title, no quotes or explanations.',
+              content: 'Generate a concise, descriptive title for this conversation based on the main topic. Maximum 50 characters. Return only the title without quotes, punctuation, or explanations. Examples: "React Native Performance", "JavaScript Questions", "Travel Planning", "Recipe Ideas".',
             },
             {
               role: 'user',
-              content: context,
+              content: `Please create a title for this conversation:\n\n${context}`,
             },
           ],
-          max_tokens: 20,
-          temperature: 0.7,
+          max_tokens: 30,
+          temperature: 0.3,
         }),
       });
 
@@ -153,11 +153,35 @@ export class ConversationStorageService {
       console.warn('Failed to generate title:', error);
     }
 
-    // Fallback: use first message content
+    // Fallback: use first message content with better formatting
     const firstUserMessage = messages.find(msg => msg.role === 'user');
     if (firstUserMessage) {
-      const words = firstUserMessage.content.split(' ').slice(0, 6);
-      return words.join(' ').substring(0, 50) + (words.length > 6 ? '...' : '');
+      let content = firstUserMessage.content.trim();
+      
+      // Remove common question prefixes for cleaner titles
+      content = content.replace(/^(what|how|why|when|where|who|can you|could you|please|help me|i need|i want)\s+/i, '');
+      content = content.trim();
+      
+      // If empty after cleaning, use original
+      if (!content) {
+        content = firstUserMessage.content.trim();
+      }
+      
+      // Take first 6 words or 45 characters, whichever is shorter
+      const words = content.split(' ').slice(0, 6);
+      let title = words.join(' ');
+      
+      if (title.length > 45) {
+        title = title.substring(0, 42) + '...';
+      } else if (content.split(' ').length > 6) {
+        title += '...';
+      }
+      
+      // Capitalize first letter and remove trailing punctuation
+      title = title.charAt(0).toUpperCase() + title.slice(1);
+      title = title.replace(/[.!?]+$/, '');
+      
+      return title;
     }
 
     return 'New Conversation';

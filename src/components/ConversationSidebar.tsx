@@ -264,11 +264,21 @@ const ConversationSidebarComponent = ({
           style: 'destructive',
           onPress: async () => {
             try {
+              // First, optimistically remove from local state for immediate UI update
+              setConversations(prev => prev.filter(conv => conv.id !== conversationId));
+              
+              // Then delete from storage
               await ConversationStorageService.deleteConversation(conversationId);
-              await loadConversations();
+              
+              // Reset pagination and reload to ensure consistency
+              setPage(0);
+              setHasMore(true);
+              await loadConversations(true);
             } catch (error) {
               console.error('Failed to delete conversation:', error);
               Alert.alert('Error', 'Failed to delete conversation');
+              // Reload conversations to restore previous state on error
+              await loadConversations(true);
             }
           },
         },
