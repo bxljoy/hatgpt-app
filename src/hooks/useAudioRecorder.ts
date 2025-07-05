@@ -12,7 +12,10 @@ const cleanupGlobalRecording = async (): Promise<void> => {
   if (globalRecordingInstance) {
     try {
       const status = await globalRecordingInstance.getStatusAsync();
-      if (status.canRecord || status.isRecording) {
+      if (status.isRecording || status.isDoneRecording) {
+        await globalRecordingInstance.stopAndUnloadAsync();
+      } else if (status.canRecord) {
+        // If it's prepared but not recording, unload it
         await globalRecordingInstance.stopAndUnloadAsync();
       }
     } catch (error) {
@@ -220,12 +223,10 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
         recordingRef.current = recording;
         globalRecordingInstance = recording;
       } catch (prepareError) {
-        // If prepare fails, ensure we clean up
-        try {
-          await recording.stopAndUnloadAsync();
-        } catch (cleanupError) {
-          console.warn('Error cleaning up failed recording:', cleanupError);
-        }
+        // If prepare fails, don't try to unload - just clean up references
+        console.warn('Prepare failed:', prepareError);
+        recordingRef.current = null;
+        globalRecordingInstance = null;
         throw prepareError;
       }
       
@@ -301,6 +302,25 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
       
       if (!finalUri) {
         throw new Error('No recording URI available');
+      }
+      
+      // Helper to wait for file to be written
+      const waitForFile = async (uri: string, timeout = 2000): Promise<boolean> => {
+        const startTime = Date.now();
+        while (Date.now() - startTime < timeout) {
+          const fileInfo = await FileSystem.getInfoAsync(uri);
+          if (fileInfo.exists && fileInfo.size && fileInfo.size > 0) {
+            return true;
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        return false;
+      };
+
+      // Wait for file to be written (max 2 seconds)
+      const fileIsValid = await waitForFile(finalUri);
+      if (!fileIsValid) {
+        throw new Error(`Recording file not found or empty after waiting: ${finalUri}`);
       }
       
       // Get final file info

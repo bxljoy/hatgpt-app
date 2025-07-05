@@ -346,6 +346,16 @@ export function getOptimalTranscriptionSettings(
 }
 
 // Error classification helpers
+// Helper to verify recording file integrity
+export async function verifyRecordingIntegrity(uri: string): Promise<boolean> {
+  try {
+    const fileInfo = await FileSystem.getInfoAsync(uri);
+    return !!(fileInfo.exists && fileInfo.size && fileInfo.size > 1024);
+  } catch (error) {
+    return false;
+  }
+}
+
 export function classifyWhisperError(error: any): {
   type: 'file_error' | 'network_error' | 'api_error' | 'quota_error' | 'unknown_error';
   message: string;
