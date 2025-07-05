@@ -16,7 +16,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export function AppNavigator() {
   return (
     <NavigationContainer>
-      <Stack.Navigator initialRouteName="ConversationList">
+      <Stack.Navigator initialRouteName="Chat">
         <Stack.Screen 
           name="ConversationList" 
           component={ConversationListScreen}
@@ -25,7 +25,7 @@ export function AppNavigator() {
         <Stack.Screen 
           name="Chat" 
           component={ChatScreen}
-          options={{ title: 'Chat' }}
+          options={{ headerShown: false }}
         />
         <Stack.Screen 
           name="Settings" 

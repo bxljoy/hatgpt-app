@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   FlatList,
@@ -12,9 +12,10 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { MessageBubble } from '@/components/MessageBubble';
 import { ChatInputWithVoice } from '@/components/ChatInputWithVoice';
+import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { useOpenAI } from '@/hooks/useOpenAI';
 import { Message } from '@/types';
 import { RootStackParamList } from '@/navigation/AppNavigator';
@@ -29,13 +30,15 @@ const isTablet = screenWidth > 768;
 
 export function ChatScreen() {
   const route = useRoute<ChatScreenRouteProp>();
+  const navigation = useNavigation();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [currentPlayingAudio, setCurrentPlayingAudio] = useState<string | null>(null);
-  const [conversationId] = useState(() => route.params?.conversationId || `conv_${Date.now()}`);
+  const [conversationId, setConversationId] = useState(() => route.params?.conversationId || `conv_${Date.now()}`);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [conversationTitle, setConversationTitle] = useState('New Conversation');
+  const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const {
@@ -68,16 +71,28 @@ export function ChatScreen() {
   });
 
   useEffect(() => {
-    // Load existing conversation if conversationId is provided
-    if (route.params?.conversationId) {
-      loadConversation(route.params.conversationId);
+    // Update conversation ID when route params change
+    if (route.params?.conversationId && route.params.conversationId !== conversationId) {
+      setConversationId(route.params.conversationId);
     }
   }, [route.params?.conversationId]);
 
-  const loadConversation = async (conversationId: string) => {
+  useEffect(() => {
+    // Load existing conversation if conversationId is provided
+    if (conversationId && conversationId.startsWith('conv_')) {
+      loadConversation(conversationId);
+    } else {
+      // Reset for new conversation
+      setMessages([]);
+      setConversation(null);
+      setConversationTitle('New Conversation');
+    }
+  }, [conversationId]);
+
+  const loadConversation = async (loadConversationId: string) => {
     try {
       setIsLoading(true);
-      const loadedConversation = await ConversationStorageService.loadConversation(conversationId);
+      const loadedConversation = await ConversationStorageService.loadConversation(loadConversationId);
       if (loadedConversation) {
         setConversation(loadedConversation);
         setMessages(loadedConversation.messages);
@@ -201,6 +216,26 @@ export function ChatScreen() {
     setRefreshing(false);
   };
 
+  // Handle conversation selection from sidebar
+  const handleConversationSelect = useCallback((selectedConversationId: string) => {
+    if (selectedConversationId !== conversationId) {
+      // Navigate to the selected conversation
+      navigation.navigate('Chat', { conversationId: selectedConversationId });
+    }
+  }, [conversationId, navigation]);
+
+  // Handle new conversation from sidebar
+  const handleNewConversation = useCallback(() => {
+    // Create a new conversation ID and navigate
+    const newConversationId = `conv_${Date.now()}`;
+    navigation.navigate('Chat', { conversationId: newConversationId });
+  }, [navigation]);
+
+  // Toggle sidebar visibility
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarVisible(prev => !prev);
+  }, []);
+
   const renderMessage = ({ item }: { item: Message }) => (
     <MessageBubble
       message={item}
@@ -219,12 +254,36 @@ export function ChatScreen() {
     </View>
   );
 
+  const renderHeader = () => (
+    <View style={styles.header}>
+      <TouchableOpacity
+        style={styles.menuButton}
+        onPress={toggleSidebar}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <View style={styles.menuIcon}>
+          <View style={styles.menuLine} />
+          <View style={styles.menuLine} />
+          <View style={styles.menuLine} />
+        </View>
+      </TouchableOpacity>
+      
+      <Text style={styles.headerTitle} numberOfLines={1}>
+        {conversationTitle}
+      </Text>
+      
+      <View style={styles.headerSpacer} />
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
+      {renderHeader()}
+      
       <KeyboardAvoidingView
         style={styles.keyboardAvoidingView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 140 : 0}
       >
         <FlatList
           ref={flatListRef}
@@ -266,6 +325,14 @@ export function ChatScreen() {
           </View>
         )}
       </KeyboardAvoidingView>
+
+      <ConversationSidebar
+        isVisible={isSidebarVisible}
+        onClose={() => setIsSidebarVisible(false)}
+        onConversationSelect={handleConversationSelect}
+        onNewConversation={handleNewConversation}
+        currentConversationId={conversationId}
+      />
     </SafeAreaView>
   );
 }
@@ -274,6 +341,43 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
+  },
+  menuButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuIcon: {
+    width: 20,
+    height: 16,
+    justifyContent: 'space-between',
+  },
+  menuLine: {
+    width: '100%',
+    height: 2,
+    backgroundColor: '#000000',
+    borderRadius: 1,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000000',
+    textAlign: 'center',
+    marginHorizontal: 16,
+  },
+  headerSpacer: {
+    width: 40,
   },
   keyboardAvoidingView: {
     flex: 1,
