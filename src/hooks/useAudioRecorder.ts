@@ -4,6 +4,25 @@ import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { AudioRecordingState, RecordingStatus } from '@/types';
 
+// Global recording instance to ensure only one recording at a time
+let globalRecordingInstance: Audio.Recording | null = null;
+
+// Function to clean up global recording instance
+const cleanupGlobalRecording = async (): Promise<void> => {
+  if (globalRecordingInstance) {
+    try {
+      const status = await globalRecordingInstance.getStatusAsync();
+      if (status.canRecord || status.isRecording) {
+        await globalRecordingInstance.stopAndUnloadAsync();
+      }
+    } catch (error) {
+      console.warn('Error cleaning up global recording:', error);
+    } finally {
+      globalRecordingInstance = null;
+    }
+  }
+};
+
 interface AudioRecorderConfig {
   maxDuration?: number; // in milliseconds
   maxFileSize?: number; // in bytes (default 10MB)
@@ -51,31 +70,8 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
 
   // Audio recording configuration
   const getRecordingOptions = useCallback(() => {
-    const baseOptions = {
-      android: {
-        extension: '.m4a',
-        outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-        audioEncoder: Audio.AndroidAudioEncoder.AAC,
-        sampleRate: 44100,
-        numberOfChannels: 2,
-        bitRate: fullConfig.quality === 'high' ? 256000 : fullConfig.quality === 'low' ? 64000 : 128000,
-      },
-      ios: {
-        extension: '.m4a',
-        outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
-        audioQuality: Audio.IOSAudioQuality.MAX,
-        sampleRate: 44100,
-        numberOfChannels: 2,
-        bitRate: fullConfig.quality === 'high' ? 256000 : fullConfig.quality === 'low' ? 64000 : 128000,
-        linearPCMBitDepth: 16,
-        linearPCMIsBigEndian: false,
-        linearPCMIsFloat: false,
-      },
-      web: {},
-    };
-
-    return baseOptions;
-  }, [fullConfig.quality]);
+    return Audio.RecordingOptionsPresets.HIGH_QUALITY;
+  }, []);
 
   // Handle permission errors
   const handlePermissionError = useCallback((error: any) => {
@@ -104,6 +100,7 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
   // Set up audio mode for recording
   const setupAudioMode = useCallback(async (): Promise<void> => {
     try {
+      await Audio.requestPermissionsAsync();
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -200,30 +197,51 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
       // Setup audio mode
       await setupAudioMode();
       
-      // Stop any existing recording
+      // Ensure any existing recording is properly cleaned up (both local and global)
       if (recordingRef.current) {
-        await recordingRef.current.stopAndUnloadAsync();
+        try {
+          await recordingRef.current.stopAndUnloadAsync();
+        } catch (cleanupError) {
+          console.warn('Error cleaning up existing recording:', cleanupError);
+        }
         recordingRef.current = null;
       }
       
-      // Generate filename
-      const filename = generateRecordingFilename();
-      const uri = `${FileSystem.documentDirectory}${filename}`;
+      // Clean up any global recording instance
+      await cleanupGlobalRecording();
       
-      // Create new recording - this will request permissions if needed
+      // Wait a moment to ensure cleanup is complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Create new recording
       const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(getRecordingOptions());
-      recordingRef.current = recording;
+      try {
+        await recording.prepareToRecordAsync(getRecordingOptions());
+        recordingRef.current = recording;
+        globalRecordingInstance = recording;
+      } catch (prepareError) {
+        // If prepare fails, ensure we clean up
+        try {
+          await recording.stopAndUnloadAsync();
+        } catch (cleanupError) {
+          console.warn('Error cleaning up failed recording:', cleanupError);
+        }
+        throw prepareError;
+      }
       
       // Start recording
       await recording.startAsync();
+      
+      // Get the URI from recording status
+      const status = await recording.getStatusAsync();
+      const recordingUri = status.uri || `${FileSystem.documentDirectory}${generateRecordingFilename()}`;
       
       // Update state
       setState(prev => ({
         ...prev,
         isRecording: true,
         isProcessing: false,
-        recordingUri: uri,
+        recordingUri,
         duration: 0,
         isPaused: false,
         recordingStatus: 'recording',
@@ -232,7 +250,7 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
       
       // Start timers
       startDurationTimer();
-      startFileSizeMonitoring(uri);
+      startFileSizeMonitoring(recordingUri);
       
       return true;
     } catch (error) {
@@ -252,6 +270,7 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
         fullConfig.onError(errorMessage);
       }
       clearTimers();
+      recordingRef.current = null;
       return false;
     }
   }, [setupAudioMode, getRecordingOptions, generateRecordingFilename, startDurationTimer, startFileSizeMonitoring, clearTimers, fullConfig, handlePermissionError]);
@@ -273,16 +292,21 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
       
       // Stop recording
       const status = await recordingRef.current.stopAndUnloadAsync();
-      const finalUri = status.uri || state.recordingUri || '';
+      const finalUri = status.uri || state.recordingUri;
       recordingRef.current = null;
+      globalRecordingInstance = null;
       
       // Clear timers
       clearTimers();
       
-      // Get final file info
-      const fileInfo = finalUri ? await getFileInfo(finalUri) : null;
+      if (!finalUri) {
+        throw new Error('No recording URI available');
+      }
       
-      if (fileInfo && fileInfo.exists) {
+      // Get final file info
+      const fileInfo = await getFileInfo(finalUri);
+      
+      if (fileInfo && fileInfo.exists && fileInfo.size > 0) {
         fullConfig.onRecordingComplete(finalUri, state.duration, fileInfo.size);
         
         setState(prev => ({
@@ -295,7 +319,7 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
         
         return finalUri;
       } else {
-        throw new Error('Recording file not found');
+        throw new Error(`Recording file not found or empty at: ${finalUri}`);
       }
     } catch (error) {
       const errorMessage = `Failed to stop recording: ${error}`;
@@ -373,6 +397,7 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
       if (recordingRef.current) {
         await recordingRef.current.stopAndUnloadAsync();
         recordingRef.current = null;
+        globalRecordingInstance = null;
       }
       
       clearTimers();
@@ -429,6 +454,8 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
       clearTimers();
       if (recordingRef.current) {
         recordingRef.current.stopAndUnloadAsync().catch(console.warn);
+        recordingRef.current = null;
+        globalRecordingInstance = null;
       }
     };
   }, [clearTimers]);
