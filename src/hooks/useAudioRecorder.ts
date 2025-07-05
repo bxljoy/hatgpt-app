@@ -384,8 +384,8 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
           try {
             const fileInfo = await FileSystem.getInfoAsync(uri);
-            console.log(`Attempt ${attempt + 1}: File exists: ${fileInfo.exists}, Size: ${fileInfo.size || 0}, URI: ${uri}`);
-            if (fileInfo.exists && fileInfo.size && fileInfo.size > 0) {
+            console.log(`Attempt ${attempt + 1}: File exists: ${fileInfo.exists}, Size: ${(fileInfo as any).size || 0}, URI: ${uri}`);
+            if (fileInfo.exists && (fileInfo as any).size && (fileInfo as any).size > 0) {
               return true;
             }
           } catch (error) {
@@ -404,7 +404,7 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
         // Try to get file info one more time for debugging
         try {
           const debugInfo = await FileSystem.getInfoAsync(finalUri);
-          console.warn(`Final file check - exists: ${debugInfo.exists}, size: ${debugInfo.size || 0}`);
+          console.warn(`Final file check - exists: ${debugInfo.exists}, size: ${(debugInfo as any).size || 0}`);
         } catch (debugError) {
           console.warn('Error getting debug file info:', debugError);
         }
