@@ -39,7 +39,7 @@ const ChatScreenComponent = () => {
   const [currentPlayingAudio, setCurrentPlayingAudio] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState(() => route.params?.conversationId || `conv_${Date.now()}`);
   const [conversation, setConversation] = useState<Conversation | null>(null);
-  const [conversationTitle, setConversationTitle] = useState('New Conversation');
+  const [conversationTitle, setConversationTitle] = useState('HatGPT 4o');
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
@@ -96,7 +96,7 @@ const ChatScreenComponent = () => {
       // Reset for new conversation
       setMessages([]);
       setConversation(null);
-      setConversationTitle('New Conversation');
+      setConversationTitle('HatGPT 4o');
     }
   }, [conversationId]);
 
@@ -127,7 +127,7 @@ const ChatScreenComponent = () => {
   const generateConversationTitle = useCallback((messages: Message[]): string => {
     // Find the first user message
     const firstUserMessage = messages.find(msg => msg.role === 'user');
-    if (!firstUserMessage) return 'New Conversation';
+    if (!firstUserMessage) return 'HatGPT 4o';
 
     let content = firstUserMessage.content.trim();
     
@@ -163,7 +163,7 @@ const ChatScreenComponent = () => {
       // Generate title if this is a new conversation and we have messages
       let title = conversationTitle;
       
-      if (title === 'New Conversation' && currentMessages.length >= 1) {
+      if (title === 'HatGPT 4o' && currentMessages.length >= 1) {
         // First, generate a quick local title from the first message
         title = generateConversationTitle(currentMessages);
         setConversationTitle(title);
@@ -294,7 +294,7 @@ const ChatScreenComponent = () => {
       setConversationId(newConversationId);
       setMessages([]);
       setConversation(null);
-      setConversationTitle('New Conversation');
+      setConversationTitle('HatGPT 4o');
       
       // Clear conversation history in OpenAI service
       clearConversationHistory(conversationId);

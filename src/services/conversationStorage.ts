@@ -111,7 +111,7 @@ export class ConversationStorageService {
   // Generate conversation title using OpenAI
   static async generateTitle(messages: Message[], openaiApiKey: string): Promise<string> {
     if (messages.length === 0) {
-      return 'New Conversation';
+      return 'HatGPT 4o';
     }
 
     try {
