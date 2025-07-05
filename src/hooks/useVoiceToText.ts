@@ -326,25 +326,21 @@ export function useVoiceToText(options: VoiceToTextOptions = {}): UseVoiceToText
   function getStateMessage(): string {
     switch (state) {
       case 'idle':
-        return 'Tap to start recording';
+        return 'Tap to record';
       case 'recording':
-        return 'Recording... Tap to stop';
+        return 'Recording...';
       case 'processing':
-        return 'Processing recording...';
+        return 'Processing...';
       case 'transcribing':
-        return whisperProgress?.phase === 'uploading' 
-          ? 'Uploading audio...'
-          : whisperProgress?.phase === 'processing'
-          ? 'Transcribing speech...'
-          : 'Preparing transcription...';
+        return 'Processing...';
       case 'editing':
-        return 'Edit text and confirm';
+        return 'Edit and confirm';
       case 'completed':
-        return 'Voice input complete';
+        return 'Complete';
       case 'error':
-        return error || 'An error occurred';
+        return 'Error occurred';
       case 'cancelled':
-        return 'Voice input cancelled';
+        return 'Cancelled';
       default:
         return '';
     }

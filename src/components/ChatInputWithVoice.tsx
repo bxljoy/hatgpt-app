@@ -33,7 +33,7 @@ export function ChatInputWithVoice({
   onSendMessage,
   isProcessing = false,
   disabled = false,
-  placeholder = 'Type a message or use voice...',
+  placeholder = 'Message...',
   maxLength = 4000,
   language,
   enableVoiceToText = true,
@@ -148,15 +148,7 @@ export function ChatInputWithVoice({
   };
 
   const renderInputIndicator = () => {
-    if (!isExpanded && message.length === 0 && enableVoiceToText) {
-      return (
-        <View style={styles.inputIndicator}>
-          <Text style={styles.inputIndicatorText}>
-            💬 Type or 🎤 Voice
-          </Text>
-        </View>
-      );
-    }
+    // Removed the indicator to keep input area clean
     return null;
   };
 
@@ -214,7 +206,7 @@ export function ChatInputWithVoice({
         language={language}
         enableTextEditing={enableTextEditing}
         autoCompleteOnTranscription={autoCompleteOnTranscription}
-        placeholder="Tap the microphone to start recording your voice message"
+        placeholder="Tap to record"
       />
     </>
   );

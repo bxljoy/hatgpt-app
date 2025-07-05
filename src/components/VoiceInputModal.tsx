@@ -41,7 +41,7 @@ export function VoiceInputModal({
   onClose,
   onTextConfirmed,
   onCancel,
-  placeholder = "Tap the microphone to start recording",
+  placeholder = "Tap to record",
   maxRecordingDuration = 300000, // 5 minutes
   language,
   enableTextEditing = true,
