@@ -56,6 +56,7 @@ const ChatScreenComponent = () => {
     error: openAIError,
     sendMessageWithContext,
     setConversationHistory,
+    clearConversationHistory,
     clearError,
   } = useOpenAI({
     conversationId,
@@ -282,10 +283,31 @@ const ChatScreenComponent = () => {
 
   // Handle new conversation from sidebar
   const handleNewConversation = useCallback(() => {
-    // Create a new conversation ID and navigate
-    const newConversationId = `conv_${Date.now()}`;
-    navigation.navigate('Chat', { conversationId: newConversationId });
-  }, [navigation]);
+    try {
+      // Create a new conversation ID
+      const newConversationId = `conv_${Date.now()}`;
+      
+      // Close sidebar immediately for better UX
+      setIsSidebarVisible(false);
+      
+      // Reset conversation state
+      setConversationId(newConversationId);
+      setMessages([]);
+      setConversation(null);
+      setConversationTitle('New Conversation');
+      
+      // Clear conversation history in OpenAI service
+      clearConversationHistory(conversationId);
+      
+      // Track navigation for performance monitoring
+      performanceMonitor.trackNavigation('Chat', 'NewChat', { newConversationId });
+      
+      console.log('Started new conversation:', newConversationId);
+    } catch (error) {
+      console.error('Failed to create new conversation:', error);
+      Alert.alert('Error', 'Failed to create new conversation');
+    }
+  }, [conversationId, clearConversationHistory]);
 
   // Toggle sidebar visibility
   const toggleSidebar = useCallback(() => {
@@ -336,6 +358,7 @@ const ChatScreenComponent = () => {
       <TouchableOpacity
         style={styles.newConversationButton}
         onPress={handleNewConversation}
+        activeOpacity={0.7}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         <Text style={styles.newConversationButtonText}>+</Text>
