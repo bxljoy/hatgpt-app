@@ -108,7 +108,7 @@ const ChatScreenComponent = () => {
           setConversation(loadedConversation);
           setMessages(loadedConversation.messages);
           setConversationTitle(loadedConversation.title);
-          setConversationHistory(loadedConversation.messages);
+          setConversationHistory(loadConversationId, loadedConversation.messages);
         }
       } catch (error) {
         console.error('Error loading conversation:', error);
@@ -289,7 +289,13 @@ const ChatScreenComponent = () => {
         {conversationTitle}
       </Text>
       
-      <View style={styles.headerSpacer} />
+      <TouchableOpacity
+        style={styles.newConversationButton}
+        onPress={handleNewConversation}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Text style={styles.newConversationButtonText}>+</Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -412,6 +418,24 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 40,
+  },
+  newConversationButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  newConversationButtonText: {
+    fontSize: 20,
+    fontWeight: '300',
+    color: '#FFFFFF',
   },
   keyboardAvoidingView: {
     flex: 1,

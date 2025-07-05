@@ -236,8 +236,13 @@ export class OpenAIService {
   }
 
   private convertMessagesToOpenAI(messages: Message[]): OpenAIMessage[] {
+    if (!messages || !Array.isArray(messages)) {
+      console.warn('[OpenAIService] convertMessagesToOpenAI: messages is undefined or not an array, returning empty array');
+      return [];
+    }
+    
     return messages
-      .filter(msg => msg.role !== 'system')
+      .filter(msg => msg && msg.role !== 'system')
       .map(msg => this.convertMessageToOpenAI(msg));
   }
 
@@ -338,6 +343,11 @@ export class OpenAIService {
   }
 
   public setConversationHistory(conversationId: string, messages: Message[]): void {
+    if (!conversationId) {
+      console.warn('[OpenAIService] setConversationHistory: conversationId is required');
+      return;
+    }
+    
     const openAIMessages = this.convertMessagesToOpenAI(messages);
     this.conversationHistory.set(conversationId, openAIMessages);
   }
