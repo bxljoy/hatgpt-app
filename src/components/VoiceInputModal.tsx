@@ -217,15 +217,6 @@ export function VoiceInputModal({
     }
   };
 
-  const handleVoiceButtonPress = async () => {
-    if (state === 'idle') {
-      await startRecording();
-    } else if (state === 'recording') {
-      await stopRecording();
-    } else if (state === 'processing') {
-      await startTranscription();
-    }
-  };
 
   const getButtonState = (): 'idle' | 'recording' | 'processing' => {
     if (state === 'recording') return 'recording';
@@ -266,7 +257,14 @@ export function VoiceInputModal({
       ]}>
         <VoiceRecordButtonAdvanced
           size={120}
-          onPress={handleVoiceButtonPress}
+          onRecordingStart={() => startRecording()}
+          onRecordingComplete={(uri, duration) => {
+            // Handle recording completion
+            stopRecording();
+          }}
+          onRecordingError={(error) => {
+            console.error('Recording error:', error);
+          }}
           disabled={state === 'transcribing' || state === 'editing'}
           maxDuration={maxRecordingDuration}
           quality="medium"
@@ -279,15 +277,15 @@ export function VoiceInputModal({
           {getStateMessage()}
         </Text>
         
-        {progress.recordingDuration && state === 'recording' && (
+        {!!progress.recordingDuration && state === 'recording' && (
           <Text style={styles.durationText}>
             {formatDuration(progress.recordingDuration)}
           </Text>
         )}
 
-        {result?.confidence && (
+        {!!result?.confidence && (
           <Text style={styles.confidenceText}>
-            Confidence: {Math.round(result.confidence * 100)}%
+            Confidence: {Math.round((result.confidence || 0) * 100)}%
           </Text>
         )}
       </View>
@@ -313,12 +311,12 @@ export function VoiceInputModal({
               <View 
                 style={[
                   styles.progressBarFill,
-                  { width: `${progress.transcriptionProgress}%` }
+                  { width: `${progress.transcriptionProgress || 0}%` }
                 ]}
               />
             </View>
             <Text style={styles.progressText}>
-              {Math.round(progress.transcriptionProgress)}%
+              {Math.round(progress.transcriptionProgress || 0)}%
             </Text>
           </View>
         )}

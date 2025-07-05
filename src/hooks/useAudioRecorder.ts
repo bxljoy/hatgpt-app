@@ -1,14 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Alert, Platform } from 'react-native';
-import { 
-  AudioRecording, 
-  AudioPermissions, 
-  createRecording,
-  RecordingOptions,
-  RecordingStatus as ExpoRecordingStatus,
-  setAudioModeAsync,
-  AudioMode,
-} from 'expo-audio';
+import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { AudioRecordingState, RecordingStatus } from '@/types';
 
@@ -52,71 +44,73 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
     recordingStatus: 'idle',
   });
 
-  const recordingRef = useRef<AudioRecording | null>(null);
+  const recordingRef = useRef<Audio.Recording | null>(null);
   const durationTimerRef = useRef<NodeJS.Timeout | null>(null);
   const fileSizeTimerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
 
   // Audio recording configuration
-  const getRecordingOptions = useCallback((): RecordingOptions => {
-    const baseOptions: RecordingOptions = {
-      extension: '.m4a',
-      sampleRate: 44100,
-      numberOfChannels: 2,
-      bitRate: fullConfig.quality === 'high' ? 256000 : fullConfig.quality === 'low' ? 64000 : 128000,
+  const getRecordingOptions = useCallback(() => {
+    const baseOptions = {
+      android: {
+        extension: '.m4a',
+        outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+        audioEncoder: Audio.AndroidAudioEncoder.AAC,
+        sampleRate: 44100,
+        numberOfChannels: 2,
+        bitRate: fullConfig.quality === 'high' ? 256000 : fullConfig.quality === 'low' ? 64000 : 128000,
+      },
+      ios: {
+        extension: '.m4a',
+        outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+        audioQuality: Audio.IOSAudioQuality.MAX,
+        sampleRate: 44100,
+        numberOfChannels: 2,
+        bitRate: fullConfig.quality === 'high' ? 256000 : fullConfig.quality === 'low' ? 64000 : 128000,
+        linearPCMBitDepth: 16,
+        linearPCMIsBigEndian: false,
+        linearPCMIsFloat: false,
+      },
+      web: {},
     };
 
     return baseOptions;
   }, [fullConfig.quality]);
 
-  // Request audio permissions
-  const requestPermissions = useCallback(async (): Promise<boolean> => {
-    try {
-      const { status } = await AudioPermissions.requestAsync();
-      
-      if (status !== 'granted') {
-        const errorMessage = 'Audio recording permission is required to use voice features.';
-        setState(prev => ({ ...prev, error: errorMessage, recordingStatus: 'error' }));
-        fullConfig.onError(errorMessage);
-        
-        Alert.alert(
-          'Permission Required',
-          'Please grant microphone access in Settings to use voice recording.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => {
-              if (Platform.OS === 'ios') {
-                // On iOS, we can't directly open settings, but we can show instructions
-                Alert.alert(
-                  'Enable Microphone Access',
-                  'Go to Settings > Privacy & Security > Microphone > HatGPT App and enable microphone access.',
-                );
-              }
-            }},
-          ]
-        );
-        
-        return false;
-      }
-      
-      return true;
-    } catch (error) {
-      const errorMessage = `Failed to request audio permissions: ${error}`;
-      setState(prev => ({ ...prev, error: errorMessage, recordingStatus: 'error' }));
-      fullConfig.onError(errorMessage);
-      return false;
-    }
+  // Handle permission errors
+  const handlePermissionError = useCallback((error: any) => {
+    const errorMessage = 'Audio recording permission is required to use voice features.';
+    setState(prev => ({ ...prev, error: errorMessage, recordingStatus: 'error' }));
+    fullConfig.onError(errorMessage);
+    
+    Alert.alert(
+      'Permission Required',
+      'Please grant microphone access in Settings to use voice recording.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => {
+          if (Platform.OS === 'ios') {
+            // On iOS, we can't directly open settings, but we can show instructions
+            Alert.alert(
+              'Enable Microphone Access',
+              'Go to Settings > Privacy & Security > Microphone > HatGPT App and enable microphone access.',
+            );
+          }
+        }},
+      ]
+    );
   }, [fullConfig]);
 
   // Set up audio mode for recording
   const setupAudioMode = useCallback(async (): Promise<void> => {
     try {
-      const audioMode: AudioMode = {
-        allowsRecording: true,
-        playsInSilentMode: true,
-      };
-      
-      await setAudioModeAsync(audioMode);
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
     } catch (error) {
       console.warn('Failed to set audio mode:', error);
     }
@@ -171,7 +165,7 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
     fileSizeTimerRef.current = setInterval(async () => {
       try {
         const fileInfo = await FileSystem.getInfoAsync(uri);
-        const size = fileInfo.size || 0;
+        const size = 'size' in fileInfo ? fileInfo.size : 0;
         
         fullConfig.onFileSizeUpdate(size);
         
@@ -203,13 +197,6 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
     try {
       setState(prev => ({ ...prev, isProcessing: true, error: null, recordingStatus: 'processing' }));
       
-      // Request permissions
-      const hasPermission = await requestPermissions();
-      if (!hasPermission) {
-        setState(prev => ({ ...prev, isProcessing: false, recordingStatus: 'error' }));
-        return false;
-      }
-      
       // Setup audio mode
       await setupAudioMode();
       
@@ -223,8 +210,9 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
       const filename = generateRecordingFilename();
       const uri = `${FileSystem.documentDirectory}${filename}`;
       
-      // Create new recording
-      const recording = await createRecording(uri, getRecordingOptions());
+      // Create new recording - this will request permissions if needed
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(getRecordingOptions());
       recordingRef.current = recording;
       
       // Start recording
@@ -248,19 +236,25 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
       
       return true;
     } catch (error) {
-      const errorMessage = `Failed to start recording: ${error}`;
-      setState(prev => ({
-        ...prev,
-        isRecording: false,
-        isProcessing: false,
-        recordingStatus: 'error',
-        error: errorMessage,
-      }));
-      fullConfig.onError(errorMessage);
+      // Check if this is a permission error
+      const errorString = error?.toString() || '';
+      if (errorString.includes('permission') || errorString.includes('denied') || errorString.includes('authorized')) {
+        handlePermissionError(error);
+      } else {
+        const errorMessage = `Failed to start recording: ${error}`;
+        setState(prev => ({
+          ...prev,
+          isRecording: false,
+          isProcessing: false,
+          recordingStatus: 'error',
+          error: errorMessage,
+        }));
+        fullConfig.onError(errorMessage);
+      }
       clearTimers();
       return false;
     }
-  }, [requestPermissions, setupAudioMode, getRecordingOptions, generateRecordingFilename, startDurationTimer, startFileSizeMonitoring, clearTimers, fullConfig]);
+  }, [setupAudioMode, getRecordingOptions, generateRecordingFilename, startDurationTimer, startFileSizeMonitoring, clearTimers, fullConfig, handlePermissionError]);
 
   // Stop recording
   const stopRecording = useCallback(async (): Promise<string | null> => {
@@ -278,15 +272,15 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
       }
       
       // Stop recording
-      await recordingRef.current.stopAsync();
+      const status = await recordingRef.current.stopAndUnloadAsync();
+      const finalUri = status.uri || state.recordingUri || '';
       recordingRef.current = null;
       
       // Clear timers
       clearTimers();
       
       // Get final file info
-      const finalUri = state.recordingUri;
-      const fileInfo = await getFileInfo(finalUri);
+      const fileInfo = finalUri ? await getFileInfo(finalUri) : null;
       
       if (fileInfo && fileInfo.exists) {
         fullConfig.onRecordingComplete(finalUri, state.duration, fileInfo.size);
@@ -377,7 +371,7 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
   const cancelRecording = useCallback(async (): Promise<void> => {
     try {
       if (recordingRef.current) {
-        await recordingRef.current.stopAsync();
+        await recordingRef.current.stopAndUnloadAsync();
         recordingRef.current = null;
       }
       
@@ -434,7 +428,7 @@ export function useAudioRecorder(config: AudioRecorderConfig = {}) {
     return () => {
       clearTimers();
       if (recordingRef.current) {
-        recordingRef.current.stopAsync().catch(console.warn);
+        recordingRef.current.stopAndUnloadAsync().catch(console.warn);
       }
     };
   }, [clearTimers]);

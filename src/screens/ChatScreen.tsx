@@ -19,6 +19,8 @@ import { useOpenAI } from '@/hooks/useOpenAI';
 import { Message } from '@/types';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { convertOpenAIResponseToMessage, generateConversationTitle, getSystemPrompt } from '@/utils/openai';
+import { ConversationStorageService } from '@/services/conversationStorage';
+import { Conversation } from '@/types';
 
 type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
 
@@ -32,6 +34,8 @@ export function ChatScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [currentPlayingAudio, setCurrentPlayingAudio] = useState<string | null>(null);
   const [conversationId] = useState(() => route.params?.conversationId || `conv_${Date.now()}`);
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [conversationTitle, setConversationTitle] = useState('New Conversation');
   const flatListRef = useRef<FlatList>(null);
 
   const {
@@ -43,11 +47,15 @@ export function ChatScreen() {
   } = useOpenAI({
     conversationId,
     systemPrompt: getSystemPrompt('voice'),
-    onSuccess: (response) => {
+    onSuccess: async (response) => {
       try {
         const assistantMessage = convertOpenAIResponseToMessage(response, conversationId);
-        setMessages(prev => [...prev, assistantMessage]);
+        const updatedMessages = [...messages, assistantMessage];
+        setMessages(updatedMessages);
         scrollToBottom();
+        
+        // Save conversation after each assistant response
+        await saveCurrentConversation(updatedMessages);
       } catch (error) {
         console.error('Error processing OpenAI response:', error);
         Alert.alert('Error', 'Failed to process AI response');
@@ -69,9 +77,13 @@ export function ChatScreen() {
   const loadConversation = async (conversationId: string) => {
     try {
       setIsLoading(true);
-      // TODO: Implement conversation loading from storage
-      // const conversation = await loadConversationFromStorage(conversationId);
-      // setMessages(conversation.messages);
+      const loadedConversation = await ConversationStorageService.loadConversation(conversationId);
+      if (loadedConversation) {
+        setConversation(loadedConversation);
+        setMessages(loadedConversation.messages);
+        setConversationTitle(loadedConversation.title);
+        setConversationHistory(loadedConversation.messages);
+      }
     } catch (error) {
       console.error('Error loading conversation:', error);
       Alert.alert('Error', 'Failed to load conversation');
@@ -82,6 +94,45 @@ export function ChatScreen() {
 
   const generateMessageId = () => {
     return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  };
+
+  const saveCurrentConversation = async (currentMessages: Message[]) => {
+    try {
+      // Generate title if this is a new conversation and we have messages
+      let title = conversationTitle;
+      if (title === 'New Conversation' && currentMessages.length >= 2) {
+        // Generate title from first few messages
+        const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+        if (apiKey) {
+          try {
+            title = await ConversationStorageService.generateTitle(currentMessages, apiKey);
+            setConversationTitle(title);
+          } catch (error) {
+            console.warn('Failed to generate title, using default');
+          }
+        }
+      }
+
+      const conversationToSave: Conversation = {
+        id: conversationId,
+        title,
+        messages: currentMessages,
+        createdAt: conversation?.createdAt || new Date(),
+        updatedAt: new Date(),
+        lastActivity: new Date(),
+        messageCount: currentMessages.length,
+        totalTokens: currentMessages.reduce((sum, msg) => sum + (msg.tokenCount || 0), 0),
+        isArchived: conversation?.isArchived || false,
+        isStarred: conversation?.isStarred || false,
+        tags: conversation?.tags || [],
+      };
+
+      await ConversationStorageService.saveConversation(conversationToSave);
+      setConversation(conversationToSave);
+    } catch (error) {
+      console.error('Failed to save conversation:', error);
+      // Don't show alert for save failures to avoid interrupting the chat flow
+    }
   };
 
   const handleSendMessage = async (messageContent: string, type: 'text' | 'voice' = 'text') => {
@@ -95,8 +146,12 @@ export function ChatScreen() {
       metadata: type === 'voice' ? { inputType: 'voice' } : undefined,
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     scrollToBottom();
+
+    // Save conversation after user message
+    await saveCurrentConversation(updatedMessages);
 
     try {
       await sendMessageWithContext(messageContent, conversationId);

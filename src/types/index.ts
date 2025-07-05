@@ -8,6 +8,16 @@ export interface Message {
   isLoading?: boolean;
   error?: string;
   tokenCount?: number;
+  metadata?: {
+    inputType?: 'voice' | 'text';
+    model?: string;
+    processingTime?: number;
+    audioSettings?: {
+      voice?: VoiceType;
+      speed?: number;
+      quality?: AudioQualityType;
+    };
+  };
 }
 
 export interface Conversation {
@@ -19,6 +29,11 @@ export interface Conversation {
   isArchived?: boolean;
   totalTokens?: number;
   lastActivity: Date;
+  messageCount?: number;
+  tags?: string[];
+  isStarred?: boolean;
+  summary?: string;
+  statistics?: ConversationStatistics;
 }
 
 // OpenAI API Types
@@ -135,18 +150,69 @@ export interface AppState {
 }
 
 export interface AppSettings {
+  // API Settings
   openaiApiKey: string;
-  voiceType: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
-  autoPlayAudio: boolean;
-  speechRate: number;
-  model: 'gpt-3.5-turbo' | 'gpt-4' | 'gpt-4-turbo' | 'gpt-4o';
+  model: 'gpt-4o';
   maxTokens: number;
   temperature: number;
   systemPrompt?: string;
-  theme: 'light' | 'dark' | 'system';
-  hapticFeedback: boolean;
-  saveAudioFiles: boolean;
+  apiTimeout: number;
+  
+  // Voice Settings
+  voiceType: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+  speechRate: number;
+  voicePitch: number;
+  voiceVolume: number;
+  autoPlayAudio: boolean;
+  autoStopAudio: boolean;
+  
+  // Audio Settings
   audioQuality: 'standard' | 'hd';
+  recordingQuality: 'low' | 'medium' | 'high';
+  saveAudioFiles: boolean;
+  autoDeleteAudio: boolean;
+  audioFileRetentionDays: number;
+  maxRecordingDuration: number;
+  backgroundAudioEnabled: boolean;
+  
+  // App Appearance
+  theme: 'light' | 'dark' | 'system';
+  fontSize: 'small' | 'medium' | 'large' | 'extra-large';
+  colorScheme: 'blue' | 'green' | 'purple' | 'orange' | 'red';
+  compactMode: boolean;
+  showTimestamps: boolean;
+  animationsEnabled: boolean;
+  
+  // Interaction Settings
+  hapticFeedback: boolean;
+  soundEffects: boolean;
+  confirmDeletions: boolean;
+  autoSaveConversations: boolean;
+  swipeActions: boolean;
+  
+  // Privacy Settings
+  analytics: boolean;
+  crashReporting: boolean;
+  dataCollection: boolean;
+  biometricLock: boolean;
+  autoLockTimeout: number;
+  
+  // Backup Settings
+  autoBackup: boolean;
+  backupFrequency: 'daily' | 'weekly' | 'monthly';
+  cloudBackupEnabled: boolean;
+  backupIncludeAudio: boolean;
+  
+  // Accessibility
+  voiceOverEnabled: boolean;
+  highContrast: boolean;
+  reduceMotion: boolean;
+  largeText: boolean;
+  
+  // Developer Settings
+  debugMode: boolean;
+  showPerformanceMetrics: boolean;
+  logLevel: 'error' | 'warn' | 'info' | 'debug';
 }
 
 // Action Types for State Management
@@ -177,6 +243,16 @@ export interface StorageConversation {
     timestamp: string;
     audioUrl?: string;
     tokenCount?: number;
+    metadata?: {
+      inputType?: 'voice' | 'text';
+      model?: string;
+      processingTime?: number;
+      audioSettings?: {
+        voice?: VoiceType;
+        speed?: number;
+        quality?: AudioQualityType;
+      };
+    };
   }[];
   title: string;
   createdAt: string;
@@ -184,6 +260,56 @@ export interface StorageConversation {
   isArchived?: boolean;
   totalTokens?: number;
   lastActivity: string;
+  messageCount?: number;
+  tags?: string[];
+  isStarred?: boolean;
+  summary?: string;
+  statistics?: ConversationStatistics;
+}
+
+export interface ConversationStatistics {
+  totalCharacters: number;
+  totalWords: number;
+  voiceInputCount: number;
+  textInputCount: number;
+  averageResponseTime: number;
+  modelsUsed: string[];
+  voicesUsed: VoiceType[];
+  totalDuration: number;
+  audioFileCount: number;
+  audioFileSizes: number;
+}
+
+export interface ConversationSearchFilters {
+  query?: string;
+  isArchived?: boolean;
+  isStarred?: boolean;
+  tags?: string[];
+  dateRange?: {
+    start: Date;
+    end: Date;
+  };
+  messageCountRange?: {
+    min: number;
+    max: number;
+  };
+  sortBy?: 'createdAt' | 'updatedAt' | 'lastActivity' | 'messageCount' | 'title';
+  sortOrder?: 'asc' | 'desc';
+  limit?: number;
+  offset?: number;
+}
+
+export interface ConversationBackup {
+  version: string;
+  exportDate: string;
+  conversations: StorageConversation[];
+  settings: StorageSettings;
+  metadata: {
+    totalConversations: number;
+    totalMessages: number;
+    backupSize: number;
+    appVersion: string;
+  };
 }
 
 export interface StorageSettings {
@@ -191,7 +317,7 @@ export interface StorageSettings {
   voiceType: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
   autoPlayAudio: boolean;
   speechRate: number;
-  model: 'gpt-3.5-turbo' | 'gpt-4' | 'gpt-4-turbo' | 'gpt-4o';
+  model: 'gpt-4o';
   maxTokens: number;
   temperature: number;
   systemPrompt?: string;
@@ -212,7 +338,7 @@ export type RootStackParamList = {
 // Utility Types
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type VoiceType = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
-export type ModelType = 'gpt-3.5-turbo' | 'gpt-4' | 'gpt-4-turbo' | 'gpt-4o';
+export type ModelType = 'gpt-4o';
 export type ThemeType = 'light' | 'dark' | 'system';
 export type AudioQualityType = 'standard' | 'hd';
 export type RecordingStatus = 'idle' | 'recording' | 'paused' | 'processing' | 'completed' | 'error';
