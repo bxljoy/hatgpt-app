@@ -24,6 +24,13 @@ export interface AgentContext {
 export class AIAgentService {
   private openAIService: OpenAIService;
   private tools: Tool[] = [];
+  private usageStats = {
+    totalQueries: 0,
+    webSearches: 0,
+    calculations: 0,
+    dateTimeQueries: 0,
+    costSaved: 0, // Estimated API calls saved
+  };
 
   constructor(openAIService: OpenAIService) {
     this.openAIService = openAIService;
@@ -48,10 +55,17 @@ export class AIAgentService {
     systemPrompt?: string
   ): Promise<string> {
     console.log('🤖 AI Agent processing query:', query);
+    this.usageStats.totalQueries++;
 
     // Step 1: Intent Analysis - Determine what tools might be needed
     const intent = await this.analyzeIntent(query);
     console.log('🧠 Intent analysis:', intent);
+
+    // Log cost optimization decisions
+    if (!intent.needsWebSearch) {
+      this.usageStats.costSaved++;
+      console.log('💰 Cost optimization: Skipping web search - estimated $0.003 saved');
+    }
 
     // Step 2: Tool Selection and Execution
     const context = await this.gatherInformation(query, intent);
@@ -80,6 +94,7 @@ export class AIAgentService {
 
   /**
    * Analyze user intent to determine which tools to use
+   * Enhanced with cost-optimization to minimize expensive API calls
    */
   private async analyzeIntent(query: string): Promise<{
     needsWebSearch: boolean;
@@ -87,31 +102,51 @@ export class AIAgentService {
     needsDateTime: boolean;
     needsRealTimeInfo: boolean;
     categories: string[];
+    confidence: number;
   }> {
+    // First, do a quick local analysis to filter out obvious non-web-search queries
+    const localAnalysis = this.quickLocalAnalysis(query);
+    
+    // If local analysis is confident that no web search is needed, skip expensive AI analysis
+    if (localAnalysis.confidence > 0.8 && !localAnalysis.likelyNeedsWebSearch) {
+      console.log('💰 Cost optimization: Skipping AI intent analysis - local analysis sufficient');
+      return {
+        needsWebSearch: false,
+        needsCalculation: localAnalysis.needsCalculation,
+        needsDateTime: localAnalysis.needsDateTime,
+        needsRealTimeInfo: false,
+        categories: localAnalysis.categories,
+        confidence: localAnalysis.confidence,
+      };
+    }
+
+    // Only use AI analysis for ambiguous queries or those likely needing web search
     const intentPrompt = `
-Analyze this user query and determine what tools might be needed to answer it comprehensively:
+Analyze this query to determine if it REQUIRES current/real-time information that GPT-4o wouldn't know:
 
 Query: "${query}"
 
-Consider:
-1. Does it need current/real-time information? (news, stocks, weather, recent events)
-2. Does it need web search for factual information?
-3. Does it need mathematical calculations?
-4. Does it need current date/time information?
-5. What categories does this query fall into?
+IMPORTANT: Only set needsWebSearch=true if the query absolutely REQUIRES:
+- Current news, events, or breaking news
+- Live data (stock prices, weather, sports scores)
+- Recent information after GPT-4o's training cutoff
+- Specific current facts that change frequently
 
-Respond with a JSON object only:
+General knowledge questions, explanations, how-to guides, and most educational content should NOT need web search.
+
+Respond with JSON only:
 {
   "needsWebSearch": boolean,
   "needsCalculation": boolean,
   "needsDateTime": boolean,
   "needsRealTimeInfo": boolean,
-  "categories": ["category1", "category2"]
+  "categories": ["category"],
+  "reasoning": "brief explanation"
 }`;
 
     try {
       const response = await this.openAIService.sendSingleMessage(intentPrompt, {
-        max_tokens: 200,
+        max_tokens: 150,
         temperature: 0.1,
       });
 
@@ -120,41 +155,127 @@ Respond with a JSON object only:
         // Extract JSON from response
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          return JSON.parse(jsonMatch[0]);
+          const result = JSON.parse(jsonMatch[0]);
+          console.log('🧠 AI Intent analysis:', result.reasoning);
+          return { ...result, confidence: 0.9 };
         }
       }
     } catch (error) {
-      console.error('Intent analysis failed:', error);
+      console.error('Intent analysis failed, using fallback:', error);
     }
 
-    // Fallback: Simple keyword-based analysis
-    return this.fallbackIntentAnalysis(query);
+    // Fallback: Enhanced keyword-based analysis
+    return this.enhancedFallbackAnalysis(query);
   }
 
   /**
-   * Fallback intent analysis using keyword matching
+   * Quick local analysis to avoid expensive API calls for obvious cases
    */
-  private fallbackIntentAnalysis(query: string): {
+  private quickLocalAnalysis(query: string): {
+    likelyNeedsWebSearch: boolean;
+    needsCalculation: boolean;
+    needsDateTime: boolean;
+    categories: string[];
+    confidence: number;
+  } {
+    const lowerQuery = query.toLowerCase();
+
+    // High-confidence indicators that DON'T need web search
+    const noWebSearchPatterns = [
+      // Educational/explanation queries
+      /^(what is|explain|how do|how does|why do|why does|define|describe)/,
+      // Programming/technical help
+      /(code|function|algorithm|programming|javascript|python|react|css)/,
+      // Math/calculations
+      /(calculate|compute|math|equation|\+|\-|\*|\/|\=)/,
+      // General knowledge
+      /(history of|theory|concept|principle|meaning)/,
+      // How-to guides
+      /(how to|tutorial|guide|steps to|instructions)/,
+    ];
+
+    // Strong indicators that DO need web search
+    const webSearchRequired = [
+      // Real-time data
+      /(current|today|now|latest|recent|breaking)/,
+      // Live information
+      /(weather|temperature|stock price|news|score|result)/,
+      // Time-sensitive queries
+      /(happening|event|update|announcement)/,
+    ];
+
+    let confidence = 0.5;
+    let likelyNeedsWebSearch = false;
+    let needsCalculation = false;
+    let needsDateTime = false;
+
+    // Check for high-confidence no-web-search patterns
+    if (noWebSearchPatterns.some(pattern => pattern.test(lowerQuery))) {
+      confidence = 0.9;
+      likelyNeedsWebSearch = false;
+    }
+
+    // Check for web search required patterns
+    if (webSearchRequired.some(pattern => pattern.test(lowerQuery))) {
+      confidence = 0.9;
+      likelyNeedsWebSearch = true;
+    }
+
+    // Check for calculations
+    const calculationIndicators = ['calculate', 'compute', 'math', '+', '-', '*', '/', '=', '%'];
+    if (calculationIndicators.some(indicator => lowerQuery.includes(indicator))) {
+      needsCalculation = true;
+      confidence = Math.max(confidence, 0.8);
+    }
+
+    // Check for date/time queries
+    const timeIndicators = ['time', 'date', 'today', 'when', 'schedule'];
+    if (timeIndicators.some(indicator => lowerQuery.includes(indicator))) {
+      needsDateTime = true;
+      confidence = Math.max(confidence, 0.8);
+    }
+
+    return {
+      likelyNeedsWebSearch,
+      needsCalculation,
+      needsDateTime,
+      categories: this.categorizeQuery(lowerQuery),
+      confidence,
+    };
+  }
+
+  /**
+   * Enhanced fallback analysis with better real-time detection
+   */
+  private enhancedFallbackAnalysis(query: string): {
     needsWebSearch: boolean;
     needsCalculation: boolean;
     needsDateTime: boolean;
     needsRealTimeInfo: boolean;
     categories: string[];
+    confidence: number;
   } {
     const lowerQuery = query.toLowerCase();
 
-    const realTimeKeywords = ['today', 'current', 'latest', 'now', 'recent', 'news', 'stock', 'weather', 'price'];
+    // Very specific real-time indicators (high precision)
+    const realTimeKeywords = [
+      'today', 'current weather', 'latest news', 'now', 'breaking news',
+      'stock price', 'live score', 'current temperature', 'today\'s weather'
+    ];
+    
     const calculationKeywords = ['calculate', 'compute', 'math', 'add', 'subtract', 'multiply', 'divide', '+', '-', '*', '/', '='];
     const dateTimeKeywords = ['time', 'date', 'when', 'schedule', 'calendar', 'tomorrow', 'yesterday'];
-    const searchKeywords = ['what is', 'who is', 'how to', 'explain', 'define', 'information about'];
-
+    
+    // Be more conservative about web search - only for clearly real-time needs
+    const needsRealTimeInfo = realTimeKeywords.some(keyword => lowerQuery.includes(keyword));
+    
     return {
-      needsWebSearch: searchKeywords.some(keyword => lowerQuery.includes(keyword)) || 
-                     realTimeKeywords.some(keyword => lowerQuery.includes(keyword)),
+      needsWebSearch: needsRealTimeInfo, // Only search for real-time info
       needsCalculation: calculationKeywords.some(keyword => lowerQuery.includes(keyword)),
       needsDateTime: dateTimeKeywords.some(keyword => lowerQuery.includes(keyword)),
-      needsRealTimeInfo: realTimeKeywords.some(keyword => lowerQuery.includes(keyword)),
+      needsRealTimeInfo: needsRealTimeInfo,
       categories: this.categorizeQuery(lowerQuery),
+      confidence: 0.7,
     };
   }
 
@@ -190,6 +311,17 @@ Respond with a JSON object only:
       if (this.shouldUseTool(tool, intent, query)) {
         try {
           console.log(`🔧 Using tool: ${tool.name}`);
+          
+          // Track usage for cost monitoring
+          if (tool.name === 'TavilySearch') {
+            this.usageStats.webSearches++;
+            console.log('💸 Tavily API call initiated - estimated cost: $0.003');
+          } else if (tool.name === 'Calculator') {
+            this.usageStats.calculations++;
+          } else if (tool.name === 'DateTime') {
+            this.usageStats.dateTimeQueries++;
+          }
+          
           const result = await tool.execute(query);
           
           context.gatheredInfo.push({
@@ -296,5 +428,58 @@ Please provide a comprehensive answer to the user's query using the above contex
    */
   getAvailableTools(): string[] {
     return this.tools.map(tool => tool.name);
+  }
+
+  /**
+   * Get usage statistics and cost information
+   */
+  getUsageStats(): {
+    totalQueries: number;
+    webSearches: number;
+    calculations: number;
+    dateTimeQueries: number;
+    costSaved: number;
+    estimatedCostSavings: string;
+    webSearchUsageRate: string;
+  } {
+    const webSearchRate = this.usageStats.totalQueries > 0 
+      ? (this.usageStats.webSearches / this.usageStats.totalQueries * 100).toFixed(1)
+      : '0';
+    
+    const estimatedSavings = (this.usageStats.costSaved * 0.003).toFixed(3);
+
+    return {
+      ...this.usageStats,
+      estimatedCostSavings: `$${estimatedSavings}`,
+      webSearchUsageRate: `${webSearchRate}%`,
+    };
+  }
+
+  /**
+   * Reset usage statistics
+   */
+  resetUsageStats(): void {
+    this.usageStats = {
+      totalQueries: 0,
+      webSearches: 0,
+      calculations: 0,
+      dateTimeQueries: 0,
+      costSaved: 0,
+    };
+  }
+
+  /**
+   * Log usage summary
+   */
+  logUsageSummary(): void {
+    const stats = this.getUsageStats();
+    console.log('📊 AI Agent Usage Summary:', {
+      totalQueries: stats.totalQueries,
+      webSearches: stats.webSearches,
+      webSearchRate: stats.webSearchUsageRate,
+      estimatedCostSavings: stats.estimatedCostSavings,
+      calculations: stats.calculations,
+      dateTimeQueries: stats.dateTimeQueries,
+    });
   }
 }

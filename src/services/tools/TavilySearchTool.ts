@@ -16,21 +16,22 @@ export class TavilySearchTool implements Tool {
   shouldActivate(query: string): boolean {
     const lowerQuery = query.toLowerCase();
     
-    // Activate for queries that likely need current information
-    const realTimeIndicators = [
-      'news', 'latest', 'current', 'today', 'recent', 'now',
-      'stock price', 'weather', 'breaking news', 'update',
-      'what happened', 'current events', 'trending'
+    // Only activate for queries that DEFINITELY need current/live information
+    const definitiveRealTimeIndicators = [
+      'current weather', 'today\'s weather', 'weather today',
+      'latest news', 'breaking news', 'current news',
+      'stock price', 'current stock', 'live score',
+      'current temperature', 'today\'s temperature',
+      'recent events', 'what happened today', 'current events',
+      'trending now', 'latest update', 'live update'
     ];
 
-    const searchIndicators = [
-      'what is', 'who is', 'how to', 'where is', 'when did',
-      'information about', 'tell me about', 'explain',
-      'research', 'find out', 'look up'
-    ];
-
-    return realTimeIndicators.some(indicator => lowerQuery.includes(indicator)) ||
-           searchIndicators.some(indicator => lowerQuery.includes(indicator));
+    // Be very conservative - only search for clearly real-time needs
+    return definitiveRealTimeIndicators.some(indicator => lowerQuery.includes(indicator)) ||
+           // Specific patterns that clearly need current data
+           /current\s+(weather|temperature|news|stock|price)/i.test(query) ||
+           /today.*(weather|temperature|news)/i.test(query) ||
+           /latest\s+(news|update|information)/i.test(query);
   }
 
   async execute(query: string): Promise<string> {
