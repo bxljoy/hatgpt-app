@@ -398,7 +398,7 @@ const ChatScreenComponent = () => {
     <View style={styles.emptyState}>
       <Text style={styles.emptyStateTitle}>Start a conversation</Text>
       <Text style={styles.emptyStateText}>
-        Type a message or tap the microphone to start talking
+        Type a message below to begin chatting
       </Text>
     </View>
   ), []);
@@ -428,7 +428,10 @@ const ChatScreenComponent = () => {
         activeOpacity={0.7}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Text style={styles.newConversationButtonText}>+</Text>
+        <View style={styles.editIcon}>
+          <View style={styles.editPenBody} />
+          <View style={styles.editPenTip} />
+        </View>
       </TouchableOpacity>
     </View>
   );
@@ -486,7 +489,10 @@ const ChatScreenComponent = () => {
           enableTextEditing={false}
           autoCompleteOnTranscription={true}
           onEnterVoiceMode={voiceModeActions.enterVoiceMode}
+          onNewConversation={handleNewConversation}
+          placeholder="Ask anything"
         />
+        
         
         {openAIError && (
           <View style={styles.errorBanner}>
@@ -580,10 +586,32 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  newConversationButtonText: {
-    fontSize: 20,
-    fontWeight: '300',
-    color: '#FFFFFF',
+  editIcon: {
+    width: 18,
+    height: 18,
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editPenBody: {
+    position: 'absolute',
+    width: 2.5,
+    height: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 1.25,
+    transform: [{ rotate: '45deg' }],
+    top: 1,
+    left: 7.75,
+  },
+  editPenTip: {
+    position: 'absolute',
+    width: 4,
+    height: 4,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 2,
+    transform: [{ rotate: '45deg' }],
+    top: -1,
+    left: 6.75,
   },
   keyboardAvoidingView: {
     flex: 1,

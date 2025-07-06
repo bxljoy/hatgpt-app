@@ -361,7 +361,11 @@ const ConversationSidebarComponent = ({
               activeOpacity={0.7}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={styles.newButtonText}>+</Text>
+              <View style={styles.editIcon}>
+                <View style={styles.editPenMain} />
+                <View style={styles.editPenNib} />
+                <View style={styles.editPenLine} />
+              </View>
             </TouchableOpacity>
           </View>
 
@@ -466,7 +470,9 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#007AFF',
+    backgroundColor: '#F8F8F8',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -474,6 +480,43 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '300',
     color: '#FFFFFF',
+  },
+  editIcon: {
+    width: 18,
+    height: 18,
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editPenMain: {
+    position: 'absolute',
+    width: 2.5,
+    height: 10,
+    backgroundColor: '#000000',
+    borderRadius: 1.25,
+    transform: [{ rotate: '45deg' }],
+    top: 3,
+    left: 7.75,
+  },
+  editPenNib: {
+    position: 'absolute',
+    width: 3,
+    height: 3,
+    backgroundColor: '#000000',
+    borderRadius: 1.5,
+    transform: [{ rotate: '45deg' }],
+    top: 1,
+    left: 7.5,
+  },
+  editPenLine: {
+    position: 'absolute',
+    width: 6,
+    height: 1.5,
+    backgroundColor: '#000000',
+    borderRadius: 0.75,
+    transform: [{ rotate: '45deg' }],
+    bottom: 3,
+    right: 3,
   },
   searchContainer: {
     paddingHorizontal: 16,

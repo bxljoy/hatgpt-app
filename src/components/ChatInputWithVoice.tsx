@@ -25,6 +25,8 @@ interface ChatInputWithVoiceProps {
   enableTextEditing?: boolean;
   autoCompleteOnTranscription?: boolean;
   onEnterVoiceMode?: () => void;
+  onNewConversation?: () => void;
+  hideButtons?: boolean;
 }
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -41,6 +43,8 @@ export function ChatInputWithVoice({
   enableTextEditing = true,
   autoCompleteOnTranscription = false,
   onEnterVoiceMode,
+  onNewConversation,
+  hideButtons = false,
 }: ChatInputWithVoiceProps) {
   const [message, setMessage] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
