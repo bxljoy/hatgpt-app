@@ -16,7 +16,9 @@ import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { MessageBubble } from '@/components/MessageBubble';
 import { ChatInputWithVoice } from '@/components/ChatInputWithVoice';
 import { ConversationSidebar } from '@/components/ConversationSidebar';
+import { VoiceConversationOverlay } from '@/components/VoiceConversationOverlay';
 import { useOpenAI } from '@/hooks/useOpenAI';
+import { useVoiceMode } from '@/hooks/useVoiceMode';
 import { Message } from '@/types';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { convertOpenAIResponseToMessage, generateConversationTitle, getSystemPrompt } from '@/utils/openai';
@@ -42,6 +44,22 @@ const ChatScreenComponent = () => {
   const [conversationTitle, setConversationTitle] = useState('HatGPT 4o');
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+
+  // Voice mode state
+  const [voiceModeState, voiceModeActions] = useVoiceMode({
+    enableHaptics: true,
+    maxRecordingDuration: 60000,
+    onTranscriptionComplete: (text) => {
+      // When transcription is complete, send it as a message
+      if (text.trim()) {
+        handleSendMessage(text, 'voice');
+      }
+    },
+    onError: (error) => {
+      console.error('Voice mode error:', error);
+      Alert.alert('Voice Error', error);
+    },
+  });
 
   // Performance tracking
   useEffect(() => {
@@ -70,14 +88,29 @@ const ChatScreenComponent = () => {
         
         // Save conversation after each assistant response
         await saveCurrentConversation(updatedMessages);
+        
+        // If voice mode is active, speak the response
+        if (voiceModeState.isVoiceModeActive) {
+          // Transition directly to speaking state
+          voiceModeActions.setVoiceState('speaking');
+          await voiceModeActions.speakResponse(assistantMessage.content);
+        }
       } catch (error) {
         console.error('Error processing OpenAI response:', error);
         Alert.alert('Error', 'Failed to process AI response');
+        // Reset to idle state on error
+        if (voiceModeState.isVoiceModeActive) {
+          voiceModeActions.setVoiceState('idle');
+        }
       }
     },
     onError: (error) => {
       console.error('OpenAI error:', error);
       Alert.alert('AI Error', 'Failed to get AI response. Please try again.');
+      // Reset to idle state on error
+      if (voiceModeState.isVoiceModeActive) {
+        voiceModeActions.setVoiceState('idle');
+      }
     },
   });
 
@@ -356,6 +389,15 @@ const ChatScreenComponent = () => {
       </Text>
       
       <TouchableOpacity
+        style={styles.voiceModeButton}
+        onPress={voiceModeActions.enterVoiceMode}
+        activeOpacity={0.7}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Text style={styles.voiceModeButtonText}>🎙️</Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity
         style={styles.newConversationButton}
         onPress={handleNewConversation}
         activeOpacity={0.7}
@@ -437,6 +479,19 @@ const ChatScreenComponent = () => {
         onNewConversation={handleNewConversation}
         currentConversationId={conversationId}
       />
+
+      <VoiceConversationOverlay
+        isVisible={voiceModeState.isVoiceModeActive}
+        voiceState={voiceModeState.voiceState}
+        onClose={voiceModeActions.exitVoiceMode}
+        onStartListening={voiceModeActions.startListening}
+        onStopListening={voiceModeActions.stopListening}
+        onToggleListening={voiceModeActions.toggleListening}
+        isListening={voiceModeState.isListening}
+        currentText={voiceModeState.currentTranscription}
+        responseText={voiceModeState.currentResponse}
+        enableHaptics={true}
+      />
     </SafeAreaView>
   );
 };
@@ -485,6 +540,24 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 40,
+  },
+  voiceModeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#34C759',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  voiceModeButtonText: {
+    fontSize: 16,
+    color: '#FFFFFF',
   },
   newConversationButton: {
     width: 36,

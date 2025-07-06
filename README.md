@@ -270,3 +270,61 @@ Prompt for Claude Code:
 6. **Request code reviews**: "Review this OpenAI integration code for best practices and security"
 
 This plan will give you a fully functional prototype in about 2-3 weeks of focused development, with each step building logically on the previous one.
+
+
+Prompt for Claude Code:
+"Implement a ChatGPT-style blue-orb voice conversation mode that's actually a visual overlay over traditional text chat. I need:
+
+1. Voice Mode Overlay System:
+   - Create a VoiceConversationOverlay component that covers the entire chat screen
+   - Animated blue orb that pulses during different states (listening, thinking, speaking)
+   - Hide all text conversation UI during voice mode
+   - Show conversation history only when exiting voice mode
+   - Smooth enter/exit animations for voice mode
+
+2. Traditional API Flow with Voice UI:
+   - Use standard OpenAI APIs: Whisper (STT) + Chat Completion + TTS
+   - Voice input → transcribe to text → send to GPT-4 → get text response → convert to speech
+   - Store all messages in conversation history normally
+   - Process everything in background while showing voice animations
+
+3. Blue Orb Animation System:
+   - Animated orb with different states: idle, listening, processing, speaking
+   - Pulse animations during AI thinking/processing
+   - Waveform-like animations during AI speaking
+   - Smooth state transitions with proper timing
+   - Use React Native Animated API or Lottie animations
+
+4. Voice Mode State Management:
+   - voiceMode: boolean to toggle overlay
+   - voiceState: 'idle' | 'listening' | 'processing' | 'speaking'
+   - Queue system for handling voice input while AI is speaking
+   - Proper state transitions and cleanup
+
+5. Background Processing with UI Feedback:
+   - Show "thinking" animation while waiting for GPT response
+   - Show "speaking" animation while TTS audio is playing
+   - Handle loading states with appropriate orb animations
+   - Add realistic delays to make processing feel natural
+
+6. Voice Mode Controls:
+   - Tap to start/stop listening
+   - Hold to record (push-to-talk option)
+   - Swipe or button to exit voice mode
+   - Mute/unmute controls
+   - Visual feedback for all interactions
+
+7. Audio Implementation:
+   - Use expo-av for recording and playback
+   - Proper audio session management
+   - Volume control and audio routing
+   - Clean up audio files after playback
+   - Handle interruptions and background audio
+
+8. Conversation Integration:
+   - All voice interactions save to normal conversation history
+   - Support conversation context across voice turns
+   - Handle conversation switching in voice mode
+   - Maintain conversation state when entering/exiting voice mode
+
+Create a complete voice mode overlay that gives the impression of real-time conversation while using reliable traditional APIs. Include proper TypeScript interfaces, smooth animations, and show how to integrate with existing chat functionality."
