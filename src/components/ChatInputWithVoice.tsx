@@ -56,6 +56,7 @@ export function ChatInputWithVoice({
   const [isExpanded, setIsExpanded] = useState(false);
   const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
 
@@ -92,11 +93,12 @@ export function ChatInputWithVoice({
     }
   };
 
-  const handleImageUpload = async () => {
+  const handleGalleryPick = async () => {
     if (!onImageMessage) return;
+    setShowAttachmentMenu(false);
 
     try {
-      // Request permissions
+      // Request photo library permissions
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       
       if (permissionResult.granted === false) {
@@ -107,28 +109,7 @@ export function ChatInputWithVoice({
             { text: 'Cancel', style: 'cancel' },
             { 
               text: 'Open Settings', 
-              onPress: () => {
-                if (Platform.OS === 'ios') {
-                  // Try multiple approaches to get as close as possible
-                  
-                  // Method 1: Try to open directly to app settings (iOS 8+)
-                  Linking.openURL('app-settings:').catch(() => {
-                    
-                    // Method 2: Try to open Photos privacy settings (may not work on newer iOS)
-                    Linking.openURL('App-Prefs:Privacy&path=PHOTOS').catch(() => {
-                      
-                      // Method 3: Try to open Privacy settings
-                      Linking.openURL('App-Prefs:Privacy').catch(() => {
-                        
-                        // Method 4: Fallback to main Settings app
-                        Linking.openURL('App-Prefs:').catch(() => {
-                          console.log('Cannot open settings - user needs to navigate manually');
-                        });
-                      });
-                    });
-                  });
-                }
-              }
+              onPress: () => openAppSettings('photos')
             }
           ]
         );
@@ -149,16 +130,94 @@ export function ChatInputWithVoice({
         
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setSelectedImageUri(asset.uri);
-        setIsExpanded(true); // Expand input to show image attachment
+        setIsExpanded(true);
         
-        // Focus on text input to encourage adding a prompt
         setTimeout(() => {
           textInputRef.current?.focus();
         }, 100);
       }
     } catch (error) {
-      console.error('Error picking image:', error);
+      console.error('Error picking image from gallery:', error);
       Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const handleCameraCapture = async () => {
+    if (!onImageMessage) return;
+    setShowAttachmentMenu(false);
+
+    try {
+      // Request camera permissions
+      const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (cameraPermission.granted === false) {
+        Alert.alert(
+          'Camera Access Required',
+          'To take photos, please:\n\n1. Go to iPhone Settings\n2. Find this app\n3. Tap "Camera"\n4. Enable camera access',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Open Settings', 
+              onPress: () => openAppSettings('camera')
+            }
+          ]
+        );
+        return;
+      }
+
+      // Launch camera
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: 'images',
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setSelectedImageUri(asset.uri);
+        setIsExpanded(true);
+        
+        setTimeout(() => {
+          textInputRef.current?.focus();
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo. Please try again.');
+    }
+  };
+
+  const handleAttachmentPress = () => {
+    setShowAttachmentMenu(!showAttachmentMenu);
+  };
+
+  const openAppSettings = (type: 'photos' | 'camera') => {
+    if (Platform.OS === 'ios') {
+      // Try multiple approaches to get as close as possible to the right settings
+      const settingsUrls = [
+        'app-settings:', // Direct app settings
+        'App-Prefs:Privacy&path=CAMERA', // Camera privacy (might not work on newer iOS)
+        'App-Prefs:Privacy&path=PHOTOS', // Photos privacy (might not work on newer iOS)
+        'App-Prefs:Privacy', // Privacy settings
+        'App-Prefs:' // Main settings
+      ];
+
+      const tryUrl = (index: number) => {
+        if (index >= settingsUrls.length) {
+          console.log('All settings URLs failed - user needs to navigate manually');
+          return;
+        }
+
+        Linking.openURL(settingsUrls[index]).catch(() => {
+          tryUrl(index + 1);
+        });
+      };
+
+      tryUrl(0);
     }
   };
 
@@ -277,8 +336,51 @@ export function ChatInputWithVoice({
     );
   };
 
+  const renderAttachmentMenu = () => {
+    if (!showAttachmentMenu) return null;
+
+    return (
+      <View style={styles.attachmentMenuContainer}>
+        <View style={styles.attachmentMenu}>
+          <TouchableOpacity 
+            style={styles.attachmentMenuItem}
+            onPress={handleCameraCapture}
+            activeOpacity={0.7}
+          >
+            <View style={styles.attachmentMenuIcon}>
+              <Text style={styles.attachmentMenuIconText}>📷</Text>
+            </View>
+            <Text style={styles.attachmentMenuText}>Camera</Text>
+          </TouchableOpacity>
+          
+          <View style={styles.attachmentMenuDivider} />
+          
+          <TouchableOpacity 
+            style={styles.attachmentMenuItem}
+            onPress={handleGalleryPick}
+            activeOpacity={0.7}
+          >
+            <View style={styles.attachmentMenuIcon}>
+              <Text style={styles.attachmentMenuIconText}>🖼️</Text>
+            </View>
+            <Text style={styles.attachmentMenuText}>Photo Library</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <>
+      {/* Overlay to close attachment menu */}
+      {showAttachmentMenu && (
+        <TouchableOpacity 
+          style={styles.menuOverlay}
+          onPress={() => setShowAttachmentMenu(false)}
+          activeOpacity={1}
+        />
+      )}
+      
       <View style={[
         styles.container,
         { paddingBottom: insets.bottom || 16 },
@@ -321,17 +423,21 @@ export function ChatInputWithVoice({
           <View style={styles.buttonRow}>
             <View style={styles.leftButtons}>
               {onImageMessage && (
-                <TouchableOpacity
-                  style={[
-                    styles.actionButton,
-                    styles.imageButton,
-                    !disabled ? styles.imageButtonActive : styles.actionButtonDisabled,
-                  ]}
-                  onPress={handleImageUpload}
-                  disabled={disabled}
-                >
-                  <Text style={styles.imageButtonText}>📷</Text>
-                </TouchableOpacity>
+                <View>
+                  <TouchableOpacity
+                    style={[
+                      styles.actionButton,
+                      styles.attachmentButton,
+                      !disabled ? styles.attachmentButtonActive : styles.actionButtonDisabled,
+                    ]}
+                    onPress={handleAttachmentPress}
+                    disabled={disabled}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.attachmentButtonText}>+</Text>
+                  </TouchableOpacity>
+                  {renderAttachmentMenu()}
+                </View>
               )}
             </View>
             
@@ -490,15 +596,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#FFFFFF',
   },
-  imageButton: {
-    // Specific styles for image button
+  attachmentButton: {
+    // Specific styles for attachment button
   },
-  imageButtonActive: {
-    backgroundColor: '#FF9500',
+  attachmentButtonActive: {
+    backgroundColor: '#007AFF',
   },
-  imageButtonText: {
-    fontSize: 16,
+  attachmentButtonText: {
+    fontSize: 18,
     color: '#FFFFFF',
+    fontWeight: '300',
+    lineHeight: 18,
   },
   soundWaveIcon: {
     flexDirection: 'row',
@@ -551,5 +659,62 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     lineHeight: 16,
+  },
+  menuOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 998,
+  },
+  attachmentMenuContainer: {
+    position: 'absolute',
+    bottom: 40,
+    left: 0,
+    zIndex: 999,
+  },
+  attachmentMenu: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 8,
+    minWidth: 160,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  attachmentMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  attachmentMenuIcon: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  attachmentMenuIconText: {
+    fontSize: 16,
+  },
+  attachmentMenuText: {
+    fontSize: 16,
+    color: '#000000',
+    fontWeight: '400',
+  },
+  attachmentMenuDivider: {
+    height: 1,
+    backgroundColor: '#E5E5EA',
+    marginHorizontal: 16,
   },
 });
