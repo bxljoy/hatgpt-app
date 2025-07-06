@@ -7,6 +7,7 @@ import {
   Message,
   ModelType,
 } from '@/types';
+import { DEFAULT_COST_OPTIMIZATION, CostOptimizationConfig } from '@/config/costOptimization';
 
 interface QueuedRequest {
   id: string;
@@ -36,6 +37,7 @@ interface OpenAIServiceConfig {
   requestTimeout?: number;
   rateLimitRPM?: number;
   rateLimitTPM?: number;
+  costOptimization?: CostOptimizationConfig;
 }
 
 export class OpenAIService {
@@ -56,6 +58,7 @@ export class OpenAIService {
       requestTimeout: 60000,
       rateLimitRPM: 60,
       rateLimitTPM: 90000,
+      costOptimization: DEFAULT_COST_OPTIMIZATION,
       ...config,
     };
 
@@ -270,10 +273,6 @@ export class OpenAIService {
   ): Promise<OpenAIChatResponse> {
     const fullConversationHistory = this.getConversationHistory(conversationId);
     
-    // COST OPTIMIZATION: Use sliding window context
-    const contextWindowSize = 20; // Keep last 20 messages (10 exchanges)
-    const recentHistory = fullConversationHistory.slice(-contextWindowSize);
-    
     const messages: OpenAIMessage[] = [];
 
     // Add system prompt if provided
@@ -284,8 +283,9 @@ export class OpenAIService {
       });
     }
 
-    // Add recent conversation history only
-    messages.push(...recentHistory);
+    // COST OPTIMIZATION: Smart context management
+    const optimizedHistory = await this.optimizeConversationContext(fullConversationHistory);
+    messages.push(...optimizedHistory);
 
     // Add new user message
     messages.push({
@@ -382,6 +382,54 @@ export class OpenAIService {
     if (newConfig.apiKey) {
       this.axios.defaults.headers['Authorization'] = `Bearer ${newConfig.apiKey}`;
     }
+  }
+
+  // COST OPTIMIZATION: Smart context management
+  private async optimizeConversationContext(history: OpenAIMessage[]): Promise<OpenAIMessage[]> {
+    const { costOptimization } = this.config;
+    
+    if (!costOptimization.enableContextOptimization) {
+      return history;
+    }
+
+    const { maxContextMessages, maxContextTokens } = costOptimization;
+    
+    if (history.length <= maxContextMessages) {
+      return history;
+    }
+
+    // Always keep the most recent messages
+    const recentMessages = history.slice(-maxContextMessages);
+
+    // Estimate tokens (rough approximation: 4 chars = 1 token)
+    const estimateTokens = (messages: OpenAIMessage[]) => 
+      messages.reduce((sum, msg) => sum + Math.ceil(msg.content.length / 4), 0);
+
+    const recentTokens = estimateTokens(recentMessages);
+    
+    // If recent messages are within token limit, return them
+    if (recentTokens <= maxContextTokens) {
+      console.log(`[OpenAI] Context kept: ${recentMessages.length} messages (~${recentTokens} tokens)`);
+      return recentMessages;
+    }
+
+    // If recent messages exceed token limit, truncate them
+    let tokenCount = 0;
+    const truncatedRecent: OpenAIMessage[] = [];
+    
+    // Add messages from most recent backwards until we hit token limit
+    for (let i = recentMessages.length - 1; i >= 0; i--) {
+      const messageTokens = Math.ceil(recentMessages[i].content.length / 4);
+      if (tokenCount + messageTokens <= maxContextTokens) {
+        truncatedRecent.unshift(recentMessages[i]);
+        tokenCount += messageTokens;
+      } else {
+        break;
+      }
+    }
+
+    console.log(`[OpenAI] Context optimized: ${history.length} → ${truncatedRecent.length} messages (~${tokenCount} tokens)`);
+    return truncatedRecent;
   }
 
   public async testConnection(): Promise<boolean> {
