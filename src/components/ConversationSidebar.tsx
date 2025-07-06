@@ -134,6 +134,7 @@ const ConversationSidebarComponent = ({
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
+  const [shouldRender, setShouldRender] = useState(false);
 
   const ITEMS_PER_PAGE = 20;
 
@@ -210,7 +211,8 @@ const ConversationSidebarComponent = ({
   // Handle sidebar animation
   useEffect(() => {
     if (isVisible) {
-      // Show sidebar
+      // Show sidebar - first set shouldRender to true, then animate
+      setShouldRender(true);
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 0,
@@ -223,22 +225,25 @@ const ConversationSidebarComponent = ({
           useNativeDriver: true,
         }),
       ]).start();
-    } else {
-      // Hide sidebar
+    } else if (shouldRender) {
+      // Hide sidebar - animate first, then set shouldRender to false
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: -screenWidth * 0.8,
-          duration: 250,
+          duration: 300,
           useNativeDriver: true,
         }),
         Animated.timing(overlayOpacity, {
           toValue: 0,
-          duration: 250,
+          duration: 300,
           useNativeDriver: true,
         }),
-      ]).start();
+      ]).start(() => {
+        // Only hide component after animation completes
+        setShouldRender(false);
+      });
     }
-  }, [isVisible, slideAnim, overlayOpacity]);
+  }, [isVisible, slideAnim, overlayOpacity, shouldRender]);
 
   // Handle conversation selection
   const handleConversationSelect = useCallback((conversationId: string) => {
@@ -324,7 +329,7 @@ const ConversationSidebarComponent = ({
     );
   }, [hasMore, isLoading]);
 
-  if (!isVisible) return null;
+  if (!shouldRender) return null;
 
   return (
     <View style={styles.container}>
