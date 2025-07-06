@@ -82,12 +82,22 @@ const ChatScreenComponent = () => {
     onSuccess: async (response) => {
       try {
         const assistantMessage = convertOpenAIResponseToMessage(response, conversationId);
-        const updatedMessages = [...messages, assistantMessage];
-        setMessages(updatedMessages);
-        scrollToBottom();
         
-        // Save conversation after each assistant response
-        await saveCurrentConversation(updatedMessages);
+        // Use functional state update to ensure we have the latest messages
+        setMessages(currentMessages => {
+          const updatedMessages = [...currentMessages, assistantMessage];
+          console.log('✅ AI response - updated messages:', updatedMessages.map(m => ({ 
+            role: m.role, 
+            content: m.content.substring(0, 50) 
+          })));
+          
+          // Save conversation with the updated messages
+          saveCurrentConversation(updatedMessages);
+          
+          return updatedMessages;
+        });
+        
+        scrollToBottom();
         
         // If voice mode is active, speak the response
         if (voiceModeState.isVoiceModeActive) {
@@ -139,10 +149,22 @@ const ChatScreenComponent = () => {
         setIsLoading(true);
         const loadedConversation = await ConversationStorageService.loadConversation(loadConversationId);
         if (loadedConversation) {
+          console.log('📥 Loaded conversation:', {
+            id: loadedConversation.id,
+            title: loadedConversation.title,
+            messageCount: loadedConversation.messages.length,
+            messages: loadedConversation.messages.map(m => ({ 
+              role: m.role, 
+              content: m.content.substring(0, 50),
+              metadata: m.metadata 
+            }))
+          });
           setConversation(loadedConversation);
           setMessages(loadedConversation.messages);
           setConversationTitle(loadedConversation.title);
           setConversationHistory(loadConversationId, loadedConversation.messages);
+        } else {
+          console.log('📥 No conversation found for ID:', loadConversationId);
         }
       } catch (error) {
         console.error('Error loading conversation:', error);
@@ -231,6 +253,17 @@ const ChatScreenComponent = () => {
         isStarred: conversation?.isStarred || false,
         tags: conversation?.tags || [],
       };
+
+      console.log('💾 Saving conversation:', {
+        id: conversationToSave.id,
+        title: conversationToSave.title,
+        messageCount: conversationToSave.messages.length,
+        messages: conversationToSave.messages.map(m => ({ 
+          role: m.role, 
+          content: m.content.substring(0, 50),
+          metadata: m.metadata 
+        }))
+      });
 
       await ConversationStorageService.saveConversation(conversationToSave);
       setConversation(conversationToSave);

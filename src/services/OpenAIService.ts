@@ -268,7 +268,12 @@ export class OpenAIService {
     systemPrompt?: string,
     options?: Partial<OpenAIChatRequest>
   ): Promise<OpenAIChatResponse> {
-    const conversationHistory = this.getConversationHistory(conversationId);
+    const fullConversationHistory = this.getConversationHistory(conversationId);
+    
+    // COST OPTIMIZATION: Use sliding window context
+    const contextWindowSize = 20; // Keep last 20 messages (10 exchanges)
+    const recentHistory = fullConversationHistory.slice(-contextWindowSize);
+    
     const messages: OpenAIMessage[] = [];
 
     // Add system prompt if provided
@@ -279,8 +284,8 @@ export class OpenAIService {
       });
     }
 
-    // Add conversation history
-    messages.push(...conversationHistory);
+    // Add recent conversation history only
+    messages.push(...recentHistory);
 
     // Add new user message
     messages.push({
