@@ -26,6 +26,7 @@ import { convertOpenAIResponseToMessage, generateConversationTitle, getSystemPro
 import { ConversationStorageService } from '@/services/conversationStorage';
 import { Conversation } from '@/types';
 import { MessageSkeleton } from '@/components/SkeletonLoader';
+import { SparklingOrb } from '@/components/SparklingOrb';
 import { performanceMonitor, measureAsync } from '@/utils/performanceMonitor';
 
 type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
@@ -44,6 +45,9 @@ const ChatScreenComponent = () => {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [conversationTitle, setConversationTitle] = useState('HatGPT AI Agent');
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const [wasAtBottomBeforeProcessing, setWasAtBottomBeforeProcessing] = useState(true);
   const flatListRef = useRef<FlatList>(null);
 
   // Voice mode state
@@ -116,8 +120,6 @@ const ChatScreenComponent = () => {
           return updatedMessages;
         });
         
-        scrollToBottom();
-        
         // If voice mode is active, speak the response
         if (voiceModeState.isVoiceModeActive) {
           // Transition directly to speaking state
@@ -174,8 +176,6 @@ const ChatScreenComponent = () => {
           return updatedMessages;
         });
         
-        scrollToBottom();
-        
         // If voice mode is active, speak the response
         if (voiceModeState.isVoiceModeActive) {
           // Transition directly to speaking state
@@ -217,8 +217,33 @@ const ChatScreenComponent = () => {
       setMessages([]);
       setConversation(null);
       setConversationTitle('HatGPT AI Agent');
+      // Reset scroll states for new conversation
+      setIsAtBottom(true);
+      setShowScrollButton(false);
+      setWasAtBottomBeforeProcessing(true);
     }
   }, [conversationId]);
+
+  // Scroll to bottom when messages are loaded from conversation history
+  useEffect(() => {
+    if (messages.length > 0 && conversation && !isLoading && !agentLoading && !openAILoading) {
+      // This means we just loaded a conversation from history
+      setTimeout(() => {
+        if (flatListRef.current) {
+          flatListRef.current.scrollToEnd({ animated: false });
+          setIsAtBottom(true);
+          setShowScrollButton(false);
+        }
+      }, 200);
+      
+      // Ensure it actually scrolled
+      setTimeout(() => {
+        if (flatListRef.current) {
+          flatListRef.current.scrollToEnd({ animated: true });
+        }
+      }, 600);
+    }
+  }, [messages.length, conversation?.id, isLoading, agentLoading, openAILoading]);
 
   const loadConversation = useCallback(async (loadConversationId: string) => {
     await measureAsync('load_conversation', async () => {
@@ -242,6 +267,23 @@ const ChatScreenComponent = () => {
           // Set history in both AI Agent and OpenAI service
           setAgentHistory(loadConversationId, loadedConversation.messages);
           setConversationHistory(loadConversationId, loadedConversation.messages);
+          
+          // Auto-scroll to bottom when loading existing conversation
+          // Use multiple attempts to ensure scroll works
+          setTimeout(() => {
+            if (flatListRef.current && loadedConversation.messages.length > 0) {
+              flatListRef.current.scrollToEnd({ animated: false });
+              setIsAtBottom(true);
+              setShowScrollButton(false);
+              setWasAtBottomBeforeProcessing(true);
+            }
+          }, 100);
+          
+          setTimeout(() => {
+            if (flatListRef.current && loadedConversation.messages.length > 0) {
+              flatListRef.current.scrollToEnd({ animated: true });
+            }
+          }, 500);
         } else {
           console.log('📥 No conversation found for ID:', loadConversationId);
         }
@@ -252,7 +294,7 @@ const ChatScreenComponent = () => {
         setIsLoading(false);
       }
     }, { conversationId: loadConversationId, messageCount: messages.length });
-  }, [setConversationHistory]);
+  }, [setAgentHistory, setConversationHistory]);
 
   const generateMessageId = () => {
     return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -365,10 +407,15 @@ const ChatScreenComponent = () => {
 
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
+    
+    // Always scroll to bottom when user sends a message
     scrollToBottom();
 
     // Save conversation after user message
     await saveCurrentConversation(updatedMessages);
+
+    // Remember scroll position before processing starts
+    setWasAtBottomBeforeProcessing(isAtBottom);
 
     try {
       // Use AI Agent for enhanced processing
@@ -439,10 +486,15 @@ const ChatScreenComponent = () => {
 
         const updatedMessages = [...messages, userMessage];
         setMessages(updatedMessages);
+        
+        // Always scroll to bottom when user sends a message
         scrollToBottom();
 
         // Save conversation after user message
         await saveCurrentConversation(updatedMessages);
+
+        // Remember scroll position before processing starts
+        setWasAtBottomBeforeProcessing(isAtBottom);
 
         try {
           console.log('[ChatScreen] Sending image message to AI Agent:', {
@@ -498,8 +550,27 @@ const ChatScreenComponent = () => {
   const scrollToBottom = () => {
     if (flatListRef.current && messages.length > 0) {
       flatListRef.current.scrollToEnd({ animated: true });
+      setIsAtBottom(true);
+      setShowScrollButton(false);
     }
   };
+
+  const scrollToShowProcessing = () => {
+    // Scroll to show the AI thinking animation
+    if (flatListRef.current) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  };
+
+  const handleScroll = useCallback((event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const isAtBottomNow = contentOffset.y + layoutMeasurement.height >= contentSize.height - 50;
+    
+    setIsAtBottom(isAtBottomNow);
+    setShowScrollButton(!isAtBottomNow && messages.length > 0);
+  }, [messages.length]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -530,6 +601,11 @@ const ChatScreenComponent = () => {
       setMessages([]);
       setConversation(null);
       setConversationTitle('HatGPT AI Agent');
+      
+      // Reset scroll states for new conversation
+      setIsAtBottom(true);
+      setShowScrollButton(false);
+      setWasAtBottomBeforeProcessing(true);
       
       // Clear conversation history in both AI Agent and OpenAI service
       clearAgentHistory(conversationId);
@@ -572,6 +648,20 @@ const ChatScreenComponent = () => {
       </Text>
     </View>
   ), []);
+
+  const renderScrollToBottomButton = () => {
+    if (!showScrollButton) return null;
+    
+    return (
+      <TouchableOpacity
+        style={styles.scrollToBottomButton}
+        onPress={scrollToBottom}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.scrollToBottomIcon}>↓</Text>
+      </TouchableOpacity>
+    );
+  };
 
   const renderHeader = () => (
     <View style={styles.header}>
@@ -626,7 +716,20 @@ const ChatScreenComponent = () => {
             messages.length === 0 && styles.messagesContainerEmpty,
           ]}
           showsVerticalScrollIndicator={false}
-          onContentSizeChange={scrollToBottom}
+          onScroll={handleScroll}
+          scrollEventThrottle={100}
+          onContentSizeChange={(contentWidth, contentHeight) => {
+            // Auto-scroll to show AI thinking animation when processing starts
+            if ((agentLoading || openAILoading) && messages.length > 0) {
+              scrollToShowProcessing();
+            }
+            // Only auto-scroll after AI completes if user was at bottom before processing
+            else if (!agentLoading && !openAILoading && wasAtBottomBeforeProcessing && messages.length > 0) {
+              setTimeout(() => {
+                flatListRef.current?.scrollToEnd({ animated: true });
+              }, 100);
+            }
+          }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -640,16 +743,9 @@ const ChatScreenComponent = () => {
           maxToRenderPerBatch={10}
           windowSize={5}
           initialNumToRender={15}
-          getItemLayout={(data, index) => ({
-            length: 100, // Approximate message height
-            offset: 100 * index,
-            index,
-          })}
-          maintainVisibleContentPosition={{
-            minIndexForVisible: 0,
-            autoscrollToTopThreshold: 10,
-          }}
         />
+        
+        {renderScrollToBottomButton()}
         
         <ChatInputWithVoice
           onSendMessage={handleSendMessage}
@@ -843,5 +939,43 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '500',
+  },
+  processingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#F8F9FA',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5EA',
+  },
+  processingText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#6B7280',
+    fontStyle: 'italic',
+  },
+  scrollToBottomButton: {
+    position: 'absolute',
+    bottom: 100,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  scrollToBottomIcon: {
+    fontSize: 18,
+    color: '#007AFF',
+    fontWeight: '600',
   },
 });

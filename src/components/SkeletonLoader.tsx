@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, StyleSheet, Dimensions } from 'react-native';
+import { SparklingOrb } from './SparklingOrb';
+import { ThinkingDots } from './ThinkingDots';
 
 interface SkeletonLoaderProps {
   width?: number | string;
@@ -55,22 +57,48 @@ export const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({
   );
 };
 
-// Message skeleton for chat loading
-export const MessageSkeleton: React.FC<{ isUser?: boolean }> = ({ isUser = false }) => (
-  <View style={[
-    styles.messageSkeletonContainer,
-    isUser ? styles.userMessageSkeleton : styles.assistantMessageSkeleton,
-  ]}>
-    <View style={[
-      styles.messageBubbleSkeleton,
-      isUser ? styles.userBubbleSkeleton : styles.assistantBubbleSkeleton,
-    ]}>
-      <SkeletonLoader height={16} style={{ marginBottom: 8 }} />
-      <SkeletonLoader height={16} width="80%" style={{ marginBottom: 8 }} />
-      <SkeletonLoader height={12} width="40%" />
+// Message skeleton for chat loading with ChatGPT-style animations
+export const MessageSkeleton: React.FC<{ isUser?: boolean; animationType?: 'orb' | 'dots' }> = ({ 
+  isUser = false, 
+  animationType = 'dots' 
+}) => {
+  if (isUser) {
+    // Keep skeleton for user messages
+    return (
+      <View style={[
+        styles.messageSkeletonContainer,
+        styles.userMessageSkeleton,
+      ]}>
+        <View style={[
+          styles.messageBubbleSkeleton,
+          styles.userBubbleSkeleton,
+        ]}>
+          <SkeletonLoader height={16} style={{ marginBottom: 8 }} />
+          <SkeletonLoader height={16} width="80%" style={{ marginBottom: 8 }} />
+          <SkeletonLoader height={12} width="40%" />
+        </View>
+      </View>
+    );
+  }
+
+  // Use different animations for assistant loading
+  if (animationType === 'orb') {
+    return (
+      <View style={styles.sparklingOrbContainer}>
+        <SparklingOrb size={36} color="#9CA3AF" />
+      </View>
+    );
+  }
+
+  // Default: ChatGPT-style thinking dots in a message bubble
+  return (
+    <View style={styles.thinkingContainer}>
+      <View style={styles.thinkingBubble}>
+        <ThinkingDots size={8} color="#9CA3AF" />
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
 // Conversation item skeleton
 export const ConversationItemSkeleton: React.FC = () => (
@@ -146,5 +174,33 @@ const styles = StyleSheet.create({
   listSkeleton: {
     flex: 1,
     paddingTop: 16,
+  },
+  sparklingOrbContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  thinkingContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  thinkingBubble: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderBottomLeftRadius: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
   },
 });
