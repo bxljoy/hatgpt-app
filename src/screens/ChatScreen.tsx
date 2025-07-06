@@ -18,6 +18,7 @@ import { ChatInputWithVoice } from '@/components/ChatInputWithVoice';
 import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { VoiceConversationOverlay } from '@/components/VoiceConversationOverlay';
 import { useOpenAI } from '@/hooks/useOpenAI';
+import { useAIAgent } from '@/hooks/useAIAgent';
 import { useVoiceMode } from '@/hooks/useVoiceMode';
 import { Message } from '@/types';
 import { RootStackParamList } from '@/navigation/AppNavigator';
@@ -41,7 +42,7 @@ const ChatScreenComponent = () => {
   const [currentPlayingAudio, setCurrentPlayingAudio] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState(() => route.params?.conversationId || `conv_${Date.now()}`);
   const [conversation, setConversation] = useState<Conversation | null>(null);
-  const [conversationTitle, setConversationTitle] = useState('HatGPT 4o');
+  const [conversationTitle, setConversationTitle] = useState('HatGPT AI Agent');
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
@@ -69,6 +70,80 @@ const ChatScreenComponent = () => {
     };
   }, []);
 
+  // AI Agent hook for enhanced processing
+  const {
+    isLoading: agentLoading,
+    error: agentError,
+    currentStep,
+    toolsUsed,
+    processQuery,
+    processImageQuery,
+    setConversationHistory: setAgentHistory,
+    clearConversationHistory: clearAgentHistory,
+    clearError: clearAgentError,
+  } = useAIAgent({
+    conversationId,
+    systemPrompt: getSystemPrompt('voice'),
+    onStepUpdate: (step) => {
+      console.log('🤖 AI Agent step:', step);
+    },
+    onSuccess: async (response) => {
+      try {
+        // Create assistant message from AI Agent response
+        const assistantMessage: Message = {
+          id: generateMessageId(),
+          content: response,
+          role: 'assistant',
+          timestamp: new Date(),
+          metadata: {
+            agentUsed: true,
+            toolsUsed: toolsUsed,
+          },
+        };
+        
+        // Use functional state update to ensure we have the latest messages
+        setMessages(currentMessages => {
+          const updatedMessages = [...currentMessages, assistantMessage];
+          console.log('✅ AI Agent response - updated messages:', updatedMessages.map(m => ({ 
+            role: m.role, 
+            content: m.content.substring(0, 50),
+            toolsUsed: m.metadata?.toolsUsed
+          })));
+          
+          // Save conversation with the updated messages
+          saveCurrentConversation(updatedMessages);
+          
+          return updatedMessages;
+        });
+        
+        scrollToBottom();
+        
+        // If voice mode is active, speak the response
+        if (voiceModeState.isVoiceModeActive) {
+          // Transition directly to speaking state
+          voiceModeActions.setVoiceState('speaking');
+          await voiceModeActions.speakResponse(response);
+        }
+      } catch (error) {
+        console.error('Error processing AI Agent response:', error);
+        Alert.alert('Error', 'Failed to process AI response');
+        // Reset to idle state on error
+        if (voiceModeState.isVoiceModeActive) {
+          voiceModeActions.setVoiceState('idle');
+        }
+      }
+    },
+    onError: (error) => {
+      console.error('AI Agent error:', error);
+      Alert.alert('AI Agent Error', 'Failed to get enhanced AI response. Falling back to basic chat.');
+      // Reset to idle state on error
+      if (voiceModeState.isVoiceModeActive) {
+        voiceModeActions.setVoiceState('idle');
+      }
+    },
+  });
+
+  // Fallback OpenAI hook for basic functionality
   const {
     isLoading: openAILoading,
     error: openAIError,
@@ -139,7 +214,7 @@ const ChatScreenComponent = () => {
       // Reset for new conversation
       setMessages([]);
       setConversation(null);
-      setConversationTitle('HatGPT 4o');
+      setConversationTitle('HatGPT AI Agent');
     }
   }, [conversationId]);
 
@@ -162,6 +237,8 @@ const ChatScreenComponent = () => {
           setConversation(loadedConversation);
           setMessages(loadedConversation.messages);
           setConversationTitle(loadedConversation.title);
+          // Set history in both AI Agent and OpenAI service
+          setAgentHistory(loadConversationId, loadedConversation.messages);
           setConversationHistory(loadConversationId, loadedConversation.messages);
         } else {
           console.log('📥 No conversation found for ID:', loadConversationId);
@@ -292,18 +369,27 @@ const ChatScreenComponent = () => {
     await saveCurrentConversation(updatedMessages);
 
     try {
-      await sendMessageWithContext(messageContent, conversationId);
+      // Use AI Agent for enhanced processing
+      await processQuery(messageContent, conversationId);
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Error sending message with AI Agent:', error);
       
-      // Update user message with error state
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === userMessage.id 
-            ? { ...msg, error: 'Failed to send message' }
-            : msg
-        )
-      );
+      // Fallback to basic OpenAI if agent fails
+      try {
+        console.log('Falling back to basic OpenAI...');
+        await sendMessageWithContext(messageContent, conversationId);
+      } catch (fallbackError) {
+        console.error('Fallback also failed:', fallbackError);
+        
+        // Update user message with error state
+        setMessages(prev => 
+          prev.map(msg => 
+            msg.id === userMessage.id 
+              ? { ...msg, error: 'Failed to send message' }
+              : msg
+          )
+        );
+      }
     }
   };
 
@@ -357,13 +443,14 @@ const ChatScreenComponent = () => {
         await saveCurrentConversation(updatedMessages);
 
         try {
-          console.log('[ChatScreen] Sending image message to OpenAI:', {
+          console.log('[ChatScreen] Sending image message to AI Agent:', {
             messageId: userMessage.id,
             hasImageBase64: !!userMessage.imageBase64,
             conversationId,
           });
           
-          await sendMessageWithContext(userMessage, conversationId);
+          // Use AI Agent for image processing
+          await processImageQuery(userMessage, conversationId);
           
           console.log('[ChatScreen] Successfully sent image message');
         } catch (error) {
@@ -440,9 +527,10 @@ const ChatScreenComponent = () => {
       setConversationId(newConversationId);
       setMessages([]);
       setConversation(null);
-      setConversationTitle('HatGPT 4o');
+      setConversationTitle('HatGPT AI Agent');
       
-      // Clear conversation history in OpenAI service
+      // Clear conversation history in both AI Agent and OpenAI service
+      clearAgentHistory(conversationId);
       clearConversationHistory(conversationId);
       
       // Track navigation for performance monitoring
@@ -545,7 +633,7 @@ const ChatScreenComponent = () => {
             />
           }
           ListEmptyComponent={renderEmptyState}
-          ListFooterComponent={openAILoading ? renderLoadingMessage : undefined}
+          ListFooterComponent={(agentLoading || openAILoading) ? renderLoadingMessage : undefined}
           removeClippedSubviews={Platform.OS === 'android'}
           maxToRenderPerBatch={10}
           windowSize={5}
@@ -564,21 +652,24 @@ const ChatScreenComponent = () => {
         <ChatInputWithVoice
           onSendMessage={handleSendMessage}
           onImageMessage={handleImageMessage}
-          isProcessing={openAILoading}
-          disabled={isLoading || openAILoading}
+          isProcessing={agentLoading || openAILoading}
+          disabled={isLoading || agentLoading || openAILoading}
           enableVoiceToText={true}
           enableTextEditing={false}
           autoCompleteOnTranscription={true}
           onEnterVoiceMode={voiceModeActions.enterVoiceMode}
           onNewConversation={handleNewConversation}
-          placeholder="Ask anything"
+          placeholder={currentStep || "Ask anything"}
         />
         
         
-        {openAIError && (
+        {(agentError || openAIError) && (
           <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>{openAIError}</Text>
-            <TouchableOpacity onPress={clearError} style={styles.errorDismiss}>
+            <Text style={styles.errorText}>{agentError || openAIError}</Text>
+            <TouchableOpacity onPress={() => {
+              clearAgentError();
+              clearError();
+            }} style={styles.errorDismiss}>
               <Text style={styles.errorDismissText}>Dismiss</Text>
             </TouchableOpacity>
           </View>
