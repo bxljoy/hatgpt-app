@@ -9,6 +9,7 @@ import {
   Platform,
   Image,
 } from 'react-native';
+import Markdown from 'react-native-markdown-display';
 import { Message } from '@/types';
 
 interface MessageBubbleProps {
@@ -50,6 +51,87 @@ const MessageBubbleComponent = ({
     isUser ? styles.userBubble : styles.assistantBubble,
     message.error && styles.errorBubble,
   ], [isUser, message.error]);
+
+  // Markdown styles for assistant messages
+  const markdownStyles = useMemo(() => ({
+    body: {
+      fontSize: 16,
+      lineHeight: 24,
+      color: '#000000',
+      fontFamily: Platform.OS === 'ios' ? 'San Francisco' : 'Roboto',
+    },
+    paragraph: {
+      marginTop: 0,
+      marginBottom: 8,
+      fontSize: 16,
+      lineHeight: 24,
+      color: '#000000',
+    },
+    strong: {
+      fontWeight: '600',
+      color: '#000000',
+    },
+    em: {
+      fontStyle: 'italic',
+      color: '#000000',
+    },
+    list_item: {
+      marginBottom: 4,
+      fontSize: 16,
+      lineHeight: 24,
+    },
+    bullet_list: {
+      marginBottom: 8,
+    },
+    ordered_list: {
+      marginBottom: 8,
+    },
+    heading1: {
+      fontSize: 20,
+      fontWeight: '600',
+      marginBottom: 8,
+      marginTop: 12,
+      color: '#000000',
+    },
+    heading2: {
+      fontSize: 18,
+      fontWeight: '600',
+      marginBottom: 6,
+      marginTop: 10,
+      color: '#000000',
+    },
+    heading3: {
+      fontSize: 16,
+      fontWeight: '600',
+      marginBottom: 4,
+      marginTop: 8,
+      color: '#000000',
+    },
+    code_inline: {
+      backgroundColor: '#F5F5F5',
+      paddingHorizontal: 4,
+      paddingVertical: 2,
+      borderRadius: 4,
+      fontSize: 14,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    },
+    code_block: {
+      backgroundColor: '#F5F5F5',
+      padding: 12,
+      borderRadius: 8,
+      marginVertical: 8,
+      fontSize: 14,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    },
+    blockquote: {
+      backgroundColor: '#F9F9F9',
+      borderLeftWidth: 4,
+      borderLeftColor: '#E0E0E0',
+      paddingLeft: 12,
+      paddingVertical: 8,
+      marginVertical: 8,
+    },
+  }), []);
 
   const messageTextStyle = useMemo(() => [
     styles.messageText,
@@ -132,9 +214,15 @@ const MessageBubbleComponent = ({
           <>
             {renderImage()}
             
-            <Text style={messageTextStyle}>
-              {message.content}
-            </Text>
+            {isAssistant ? (
+              <Markdown style={markdownStyles}>
+                {message.content}
+              </Markdown>
+            ) : (
+              <Text style={messageTextStyle}>
+                {message.content}
+              </Text>
+            )}
             
             {message.error && renderError()}
             
@@ -170,7 +258,7 @@ export const MessageBubble = memo(MessageBubbleComponent, (prevProps, nextProps)
 const styles = StyleSheet.create({
   messageContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 4,
+    paddingVertical: 8,
     flexDirection: 'row',
     maxWidth: '100%',
   },
@@ -181,20 +269,20 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   bubble: {
-    maxWidth: isTablet ? '60%' : '75%',
+    maxWidth: isTablet ? '85%' : '90%',
     minWidth: 60,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderRadius: 20,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
       },
       android: {
-        elevation: 2,
+        elevation: 1,
       },
     }),
   },
@@ -203,15 +291,17 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 6,
   },
   assistantBubble: {
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#FFFFFF',
     borderBottomLeftRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
   },
   errorBubble: {
     backgroundColor: '#FF3B30',
   },
   messageText: {
     fontSize: 16,
-    lineHeight: 22,
+    lineHeight: 24,
     fontWeight: '400',
   },
   userMessageText: {
