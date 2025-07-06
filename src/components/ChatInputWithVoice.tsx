@@ -24,6 +24,7 @@ interface ChatInputWithVoiceProps {
   enableVoiceToText?: boolean;
   enableTextEditing?: boolean;
   autoCompleteOnTranscription?: boolean;
+  onEnterVoiceMode?: () => void;
 }
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -39,6 +40,7 @@ export function ChatInputWithVoice({
   enableVoiceToText = true,
   enableTextEditing = true,
   autoCompleteOnTranscription = false,
+  onEnterVoiceMode,
 }: ChatInputWithVoiceProps) {
   const [message, setMessage] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
@@ -61,6 +63,13 @@ export function ChatInputWithVoice({
     if (canUseVoice) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setShowVoiceModal(true);
+    }
+  };
+
+  const handleConversationMode = () => {
+    if (onEnterVoiceMode) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      onEnterVoiceMode();
     }
   };
 
@@ -89,7 +98,9 @@ export function ChatInputWithVoice({
     }
   };
 
-  const renderSendButton = () => {
+  const renderActionButton = () => {
+    const hasInput = message.trim().length > 0;
+    
     if (isProcessing) {
       return (
         <View style={[styles.actionButton, styles.sendButton, styles.actionButtonDisabled]}>
@@ -98,37 +109,45 @@ export function ChatInputWithVoice({
       );
     }
 
-    return (
-      <TouchableOpacity
-        style={[
-          styles.actionButton,
-          styles.sendButton,
-          canSend ? styles.sendButtonActive : styles.actionButtonDisabled,
-        ]}
-        onPress={handleSend}
-        disabled={!canSend}
-      >
-        <Text style={styles.sendButtonText}>➤</Text>
-      </TouchableOpacity>
-    );
-  };
-
-  const renderVoiceButton = () => {
-    if (!enableVoiceToText) return null;
-
-    return (
-      <TouchableOpacity
-        style={[
-          styles.actionButton,
-          styles.voiceButton,
-          canUseVoice ? styles.voiceButtonActive : styles.actionButtonDisabled,
-        ]}
-        onPress={handleVoiceInput}
-        disabled={!canUseVoice}
-      >
-        <Text style={styles.voiceButtonText}>🎤</Text>
-      </TouchableOpacity>
-    );
+    if (hasInput) {
+      // Show send button when there's input
+      return (
+        <TouchableOpacity
+          style={[
+            styles.actionButton,
+            styles.sendButton,
+            canSend ? styles.sendButtonActive : styles.actionButtonDisabled,
+          ]}
+          onPress={handleSend}
+          disabled={!canSend}
+        >
+          <Text style={styles.sendButtonText}>➤</Text>
+        </TouchableOpacity>
+      );
+    } else {
+      // Show conversation mode button when no input
+      return (
+        <TouchableOpacity
+          style={[
+            styles.actionButton,
+            styles.conversationButton,
+            !disabled ? styles.conversationButtonActive : styles.actionButtonDisabled,
+          ]}
+          onPress={handleConversationMode}
+          disabled={disabled}
+        >
+          <View style={styles.soundWaveIcon}>
+            <View style={[styles.soundWaveLine, styles.soundWaveLine1]} />
+            <View style={[styles.soundWaveLine, styles.soundWaveLine2]} />
+            <View style={[styles.soundWaveLine, styles.soundWaveLine3]} />
+            <View style={[styles.soundWaveLine, styles.soundWaveLine4]} />
+            <View style={[styles.soundWaveLine, styles.soundWaveLine3]} />
+            <View style={[styles.soundWaveLine, styles.soundWaveLine2]} />
+            <View style={[styles.soundWaveLine, styles.soundWaveLine1]} />
+          </View>
+        </TouchableOpacity>
+      );
+    }
   };
 
   const renderCharacterCount = () => {
@@ -190,8 +209,7 @@ export function ChatInputWithVoice({
           
           <View style={styles.buttonContainer}>
             {renderCharacterCount()}
-            {renderVoiceButton()}
-            {renderSendButton()}
+            {renderActionButton()}
           </View>
         </View>
       </View>
@@ -319,5 +337,40 @@ const styles = StyleSheet.create({
   },
   voiceButtonText: {
     fontSize: 16,
+  },
+  conversationButton: {
+    // Specific styles for conversation button
+  },
+  conversationButtonActive: {
+    backgroundColor: '#10A37F',
+  },
+  conversationButtonText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  soundWaveIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 16,
+    height: 12,
+    gap: 1.5,
+  },
+  soundWaveLine: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 0.5,
+    width: 1.5,
+  },
+  soundWaveLine1: {
+    height: 4,
+  },
+  soundWaveLine2: {
+    height: 8,
+  },
+  soundWaveLine3: {
+    height: 12,
+  },
+  soundWaveLine4: {
+    height: 6,
   },
 });

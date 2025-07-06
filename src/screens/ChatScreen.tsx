@@ -421,14 +421,6 @@ const ChatScreenComponent = () => {
         {conversationTitle}
       </Text>
       
-      <TouchableOpacity
-        style={styles.voiceModeButton}
-        onPress={voiceModeActions.enterVoiceMode}
-        activeOpacity={0.7}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Text style={styles.voiceModeButtonText}>🎙️</Text>
-      </TouchableOpacity>
       
       <TouchableOpacity
         style={styles.newConversationButton}
@@ -493,6 +485,7 @@ const ChatScreenComponent = () => {
           enableVoiceToText={true}
           enableTextEditing={false}
           autoCompleteOnTranscription={true}
+          onEnterVoiceMode={voiceModeActions.enterVoiceMode}
         />
         
         {openAIError && (
@@ -573,24 +566,6 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 40,
-  },
-  voiceModeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#34C759',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  voiceModeButtonText: {
-    fontSize: 16,
-    color: '#FFFFFF',
   },
   newConversationButton: {
     width: 36,
