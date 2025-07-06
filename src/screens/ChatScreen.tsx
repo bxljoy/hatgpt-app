@@ -83,7 +83,7 @@ const ChatScreenComponent = () => {
     clearError: clearAgentError,
   } = useAIAgent({
     conversationId,
-    systemPrompt: getSystemPrompt('voice'),
+    systemPrompt: getSystemPrompt('chatgpt'),
     onStepUpdate: (step) => {
       console.log('🤖 AI Agent step:', step);
     },
@@ -122,6 +122,8 @@ const ChatScreenComponent = () => {
         if (voiceModeState.isVoiceModeActive) {
           // Transition directly to speaking state
           voiceModeActions.setVoiceState('speaking');
+          // For voice mode, we'll use the text response as-is since our voice system prompt
+          // already optimizes for speech delivery
           await voiceModeActions.speakResponse(response);
         }
       } catch (error) {
@@ -153,7 +155,7 @@ const ChatScreenComponent = () => {
     clearError,
   } = useOpenAI({
     conversationId,
-    systemPrompt: getSystemPrompt('voice'),
+    systemPrompt: getSystemPrompt('chatgpt'),
     onSuccess: async (response) => {
       try {
         const assistantMessage = convertOpenAIResponseToMessage(response, conversationId);

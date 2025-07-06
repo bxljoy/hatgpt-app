@@ -79,10 +79,17 @@ export class AIAgentService {
     console.log('📝 Enhanced prompt created');
 
     // Step 4: Generate final response using enhanced context
+    // Enhance the system prompt to encourage detailed, structured responses
+    const isVoiceMode = systemPrompt?.includes('voice-optimized') || systemPrompt?.includes('spoken aloud');
+    
+    const enhancedSystemPrompt = systemPrompt ? 
+      `${systemPrompt}\n\nIMPORTANT: Given that I have gathered additional context from tools${context.toolsUsed.length > 0 ? ` (${context.toolsUsed.join(', ')})` : ''}, please provide a comprehensive, well-structured response that integrates this information seamlessly. ${isVoiceMode ? 'Structure your response for clear speech delivery with natural transitions between ideas.' : 'Use clear headings, bullet points, and examples where appropriate to make the information easily digestible.'}` 
+      : undefined;
+
     const response = await this.openAIService.sendMessageWithContext(
       enhancedPrompt,
       conversationId,
-      systemPrompt
+      enhancedSystemPrompt
     );
 
     if (response.choices[0]?.message?.content) {
@@ -384,8 +391,16 @@ Respond with JSON only:
    */
   private async synthesizeContext(originalQuery: string, context: AgentContext): Promise<string> {
     if (context.gatheredInfo.length === 0) {
-      // No additional information gathered, return original query
-      return originalQuery;
+      // No additional information gathered, but still enhance the prompt for better responses
+      return `
+User Query: ${originalQuery}
+
+Instructions: Please provide a comprehensive, well-structured, and detailed response to this query. Include:
+- Clear explanations with examples where helpful
+- Step-by-step guidance if applicable
+- Best practices and important considerations
+- Additional context that would be valuable to the user
+- Proper formatting with headings and bullet points for readability`;
     }
 
     // Sort gathered information by relevance
@@ -394,17 +409,30 @@ Respond with JSON only:
       .slice(0, 5); // Take top 5 most relevant pieces
 
     // Create enhanced prompt with context
-    const contextSections = sortedInfo.map(info => 
-      `[${info.source}]: ${info.content}`
-    ).join('\n\n');
+    const contextSections = sortedInfo.map((info, index) => 
+      `### ${info.source} Information:
+${info.content}
+`
+    ).join('\n');
 
     const enhancedPrompt = `
 User Query: ${originalQuery}
 
-Additional Context (gathered from ${context.toolsUsed.join(', ')}):
+## Additional Context Information
+The following information was gathered from ${context.toolsUsed.join(', ')} to provide you with current and accurate data:
+
 ${contextSections}
 
-Please provide a comprehensive answer to the user's query using the above context information. Prioritize accuracy and cite sources when relevant. If the context information is not directly related to the query, you may use your general knowledge while noting what information comes from external sources.`;
+## Instructions
+Please provide a comprehensive, well-structured response that:
+- Integrates the above context information seamlessly with your knowledge
+- Uses clear headings, bullet points, and formatting for optimal readability
+- Provides detailed explanations with practical examples
+- Cites sources when using the gathered information
+- Includes additional valuable context or recommendations
+- Maintains a helpful, pedagogical tone throughout
+
+If any gathered information seems outdated or contradictory, please note this and provide your assessment.`;
 
     return enhancedPrompt;
   }
