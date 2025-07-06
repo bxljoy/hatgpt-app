@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Platform,
+  Image,
 } from 'react-native';
 import { Message } from '@/types';
 
@@ -107,6 +108,21 @@ const MessageBubbleComponent = ({
     );
   }, [message.tokenCount]);
 
+  const renderImage = useCallback(() => {
+    const imageSource = message.imageUrl || (message.imageBase64 ? `data:image/jpeg;base64,${message.imageBase64}` : null);
+    if (!imageSource) return null;
+    
+    return (
+      <View style={styles.imageContainer}>
+        <Image
+          source={{ uri: imageSource }}
+          style={styles.messageImage}
+          resizeMode="cover"
+        />
+      </View>
+    );
+  }, [message.imageUrl, message.imageBase64]);
+
   return (
     <View style={containerStyle}>
       <View style={bubbleStyle}>
@@ -114,6 +130,8 @@ const MessageBubbleComponent = ({
           renderLoadingIndicator()
         ) : (
           <>
+            {renderImage()}
+            
             <Text style={messageTextStyle}>
               {message.content}
             </Text>
@@ -142,6 +160,8 @@ export const MessageBubble = memo(MessageBubbleComponent, (prevProps, nextProps)
     prevProps.message.content === nextProps.message.content &&
     prevProps.message.isLoading === nextProps.message.isLoading &&
     prevProps.message.error === nextProps.message.error &&
+    prevProps.message.imageUrl === nextProps.message.imageUrl &&
+    prevProps.message.imageBase64 === nextProps.message.imageBase64 &&
     prevProps.isAudioPlaying === nextProps.isAudioPlaying &&
     prevProps.message.timestamp.getTime() === nextProps.message.timestamp.getTime()
   );
@@ -261,5 +281,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#FFFFFF',
     fontWeight: '500',
+  },
+  imageContainer: {
+    marginBottom: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  messageImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
   },
 });

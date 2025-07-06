@@ -227,11 +227,62 @@ export class OpenAIService {
   }
 
   private estimateTokenCount(messages: OpenAIMessage[]): number {
-    const totalLength = messages.reduce((sum, msg) => sum + msg.content.length, 0);
+    const totalLength = messages.reduce((sum, msg) => {
+      if (typeof msg.content === 'string') {
+        return sum + msg.content.length;
+      } else if (Array.isArray(msg.content)) {
+        // For array content (with images), estimate tokens for text parts
+        const textLength = msg.content
+          .filter(item => item.type === 'text')
+          .reduce((textSum, item) => textSum + (item.text?.length || 0), 0);
+        // Add estimated tokens for images (roughly 765 tokens per image)
+        const imageCount = msg.content.filter(item => item.type === 'image_url').length;
+        return sum + textLength + (imageCount * 765);
+      }
+      return sum;
+    }, 0);
     return Math.ceil(totalLength / 4); // Rough estimation: 4 characters per token
   }
 
   private convertMessageToOpenAI(message: Message): OpenAIMessage {
+    // Check if message has an image
+    if (message.imageUrl || message.imageBase64) {
+      const imageUrl = message.imageUrl || `data:image/jpeg;base64,${message.imageBase64}`;
+      
+      console.log('[OpenAI] Converting image message:', {
+        hasImageUrl: !!message.imageUrl,
+        hasImageBase64: !!message.imageBase64,
+        base64Length: message.imageBase64?.length,
+        content: message.content,
+      });
+      
+      const openAIMessage = {
+        role: message.role as 'user' | 'assistant',
+        content: [
+          {
+            type: 'text',
+            text: message.content || 'What do you see in this image?',
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: imageUrl,
+              detail: 'high', // Use high detail for better analysis
+            },
+          },
+        ],
+      };
+      
+      console.log('[OpenAI] Created OpenAI message with image:', {
+        role: openAIMessage.role,
+        contentLength: openAIMessage.content.length,
+        hasImageUrl: openAIMessage.content.some(item => item.type === 'image_url'),
+      });
+      
+      return openAIMessage;
+    }
+
+    // Regular text message
     return {
       role: message.role as 'user' | 'assistant',
       content: message.content,
@@ -266,7 +317,7 @@ export class OpenAIService {
   }
 
   public async sendMessageWithContext(
-    message: string,
+    message: string | Message,
     conversationId: string,
     systemPrompt?: string,
     options?: Partial<OpenAIChatRequest>
@@ -287,19 +338,24 @@ export class OpenAIService {
     const optimizedHistory = await this.optimizeConversationContext(fullConversationHistory);
     messages.push(...optimizedHistory);
 
-    // Add new user message
-    messages.push({
-      role: 'user',
-      content: message,
-    });
+    // Add new user message - handle both string and Message object
+    let newUserMessage: OpenAIMessage;
+    if (typeof message === 'string') {
+      // Simple text message
+      newUserMessage = {
+        role: 'user',
+        content: message,
+      };
+    } else {
+      // Full Message object (may include image)
+      newUserMessage = this.convertMessageToOpenAI(message);
+    }
+    messages.push(newUserMessage);
 
     const response = await this.sendChatCompletion(messages, options);
 
     // Update conversation history
-    this.addToConversationHistory(conversationId, {
-      role: 'user',
-      content: message,
-    });
+    this.addToConversationHistory(conversationId, newUserMessage);
 
     if (response.choices[0]?.message) {
       this.addToConversationHistory(conversationId, response.choices[0].message);
@@ -322,11 +378,49 @@ export class OpenAIService {
 
     const estimatedTokens = this.estimateTokenCount(messages) + (request.max_tokens || 0);
 
+    // Debug logging for image messages
+    const hasImageMessages = messages.some(msg => 
+      Array.isArray(msg.content) && msg.content.some(item => item.type === 'image_url')
+    );
+    
+    if (hasImageMessages) {
+      console.log('[OpenAI] Sending request with images:', {
+        model: request.model,
+        messagesCount: messages.length,
+        imageMessages: messages.filter(msg => 
+          Array.isArray(msg.content) && msg.content.some(item => item.type === 'image_url')
+        ).length,
+      });
+      
+      // Log the structure of image messages (without the actual base64 data)
+      messages.forEach((msg, index) => {
+        if (Array.isArray(msg.content)) {
+          console.log(`[OpenAI] Message ${index}:`, {
+            role: msg.role,
+            contentItems: msg.content.map(item => ({ 
+              type: item.type,
+              hasText: !!item.text,
+              hasImageUrl: !!item.image_url,
+            })),
+          });
+        }
+      });
+    }
+
     return this.addToQueue(async () => {
       this.rateLimitState.requestCount++;
       this.rateLimitState.tokenCount += estimatedTokens;
 
       const response = await this.axios.post<OpenAIChatResponse>('/chat/completions', request);
+      
+      if (hasImageMessages) {
+        console.log('[OpenAI] Received response for image request:', {
+          choices: response.data.choices.length,
+          finishReason: response.data.choices[0]?.finish_reason,
+          usage: response.data.usage,
+        });
+      }
+      
       return response.data;
     });
   }

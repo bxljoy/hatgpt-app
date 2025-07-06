@@ -307,6 +307,86 @@ const ChatScreenComponent = () => {
     }
   };
 
+  const handleImageMessage = async (imageUri: string, prompt: string) => {
+    if (!imageUri) return;
+
+    try {
+      // Read image as base64
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      const reader = new FileReader();
+      
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        const base64 = base64data.split(',')[1]; // Remove data:image/jpeg;base64, prefix
+
+        console.log('[ChatScreen] Processing image:', {
+          imageUri,
+          prompt,
+          base64Length: base64.length,
+          base64Preview: base64.substring(0, 50) + '...',
+        });
+
+        const userMessage: Message = {
+          id: generateMessageId(),
+          content: prompt,
+          role: 'user',
+          timestamp: new Date(),
+          imageBase64: base64,
+          metadata: { 
+            inputType: 'image',
+            imageSettings: {
+              format: 'jpeg',
+              originalSize: { width: 0, height: 0 }, // Will be filled by actual image dimensions
+            }
+          },
+        };
+
+        console.log('[ChatScreen] Created user message with image:', {
+          id: userMessage.id,
+          content: userMessage.content,
+          hasImageBase64: !!userMessage.imageBase64,
+          imageBase64Length: userMessage.imageBase64?.length,
+        });
+
+        const updatedMessages = [...messages, userMessage];
+        setMessages(updatedMessages);
+        scrollToBottom();
+
+        // Save conversation after user message
+        await saveCurrentConversation(updatedMessages);
+
+        try {
+          console.log('[ChatScreen] Sending image message to OpenAI:', {
+            messageId: userMessage.id,
+            hasImageBase64: !!userMessage.imageBase64,
+            conversationId,
+          });
+          
+          await sendMessageWithContext(userMessage, conversationId);
+          
+          console.log('[ChatScreen] Successfully sent image message');
+        } catch (error) {
+          console.error('Error sending image message:', error);
+          
+          // Update user message with error state
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === userMessage.id 
+                ? { ...msg, error: 'Failed to send image message' }
+                : msg
+            )
+          );
+        }
+      };
+
+      reader.readAsDataURL(blob);
+    } catch (error) {
+      console.error('Error processing image:', error);
+      Alert.alert('Error', 'Failed to process image. Please try again.');
+    }
+  };
+
   const handleRetryMessage = (messageId: string) => {
     const message = messages.find(msg => msg.id === messageId);
     if (message && message.role === 'user') {
@@ -483,6 +563,7 @@ const ChatScreenComponent = () => {
         
         <ChatInputWithVoice
           onSendMessage={handleSendMessage}
+          onImageMessage={handleImageMessage}
           isProcessing={openAILoading}
           disabled={isLoading || openAILoading}
           enableVoiceToText={true}

@@ -21,7 +21,20 @@ export function estimateMessagesTokenCount(messages: OpenAIMessage[]): number {
   for (const message of messages) {
     // Each message has overhead tokens
     totalTokens += 4; // Overhead per message
-    totalTokens += estimateTokenCount(message.content);
+    
+    // Handle both string and array content (for image messages)
+    if (typeof message.content === 'string') {
+      totalTokens += estimateTokenCount(message.content);
+    } else if (Array.isArray(message.content)) {
+      // For array content (with images), estimate tokens for text parts
+      const textTokens = message.content
+        .filter(item => item.type === 'text')
+        .reduce((sum, item) => sum + estimateTokenCount(item.text || ''), 0);
+      // Add estimated tokens for images (roughly 765 tokens per image)
+      const imageCount = message.content.filter(item => item.type === 'image_url').length;
+      totalTokens += textTokens + (imageCount * 765);
+    }
+    
     totalTokens += estimateTokenCount(message.role);
   }
   

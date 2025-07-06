@@ -8,14 +8,22 @@ export interface Message {
   isLoading?: boolean;
   error?: string;
   tokenCount?: number;
+  imageUrl?: string;
+  imageBase64?: string;
   metadata?: {
-    inputType?: 'voice' | 'text';
+    inputType?: 'voice' | 'text' | 'image';
     model?: string;
     processingTime?: number;
     audioSettings?: {
       voice?: VoiceType;
       speed?: number;
       quality?: AudioQualityType;
+    };
+    imageSettings?: {
+      originalSize?: { width: number; height: number };
+      compressedSize?: { width: number; height: number };
+      fileSize?: number;
+      format?: string;
     };
   };
 }
@@ -39,7 +47,14 @@ export interface Conversation {
 // OpenAI API Types
 export interface OpenAIMessage {
   role: 'user' | 'assistant' | 'system';
-  content: string;
+  content: string | Array<{
+    type: 'text' | 'image_url';
+    text?: string;
+    image_url?: {
+      url: string;
+      detail?: 'low' | 'high' | 'auto';
+    };
+  }>;
 }
 
 export interface OpenAIChatRequest {
@@ -242,15 +257,23 @@ export interface StorageConversation {
     role: 'user' | 'assistant';
     timestamp: string;
     audioUrl?: string;
+    imageUrl?: string;
+    imageBase64?: string;
     tokenCount?: number;
     metadata?: {
-      inputType?: 'voice' | 'text';
+      inputType?: 'voice' | 'text' | 'image';
       model?: string;
       processingTime?: number;
       audioSettings?: {
         voice?: VoiceType;
         speed?: number;
         quality?: AudioQualityType;
+      };
+      imageSettings?: {
+        originalSize?: { width: number; height: number };
+        compressedSize?: { width: number; height: number };
+        fileSize?: number;
+        format?: string;
       };
     };
   }[];

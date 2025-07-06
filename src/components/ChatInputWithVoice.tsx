@@ -8,14 +8,19 @@ import {
   Platform,
   Dimensions,
   ActivityIndicator,
+  Alert,
+  Linking,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 
 import { VoiceInputModal } from './VoiceInputModal';
 
 interface ChatInputWithVoiceProps {
   onSendMessage: (message: string, type: 'text' | 'voice') => void;
+  onImageMessage?: (imageUri: string, prompt: string) => void;
   isProcessing?: boolean;
   disabled?: boolean;
   placeholder?: string;
@@ -34,6 +39,7 @@ const isTablet = screenWidth > 768;
 
 export function ChatInputWithVoice({
   onSendMessage,
+  onImageMessage,
   isProcessing = false,
   disabled = false,
   placeholder = 'Message...',
@@ -49,15 +55,24 @@ export function ChatInputWithVoice({
   const [message, setMessage] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
   const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const textInputRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
 
-  const canSend = message.trim().length > 0 && !disabled && !isProcessing;
+  const canSend = (message.trim().length > 0 || selectedImageUri) && !disabled && !isProcessing;
   const canUseVoice = enableVoiceToText && !disabled && !isProcessing;
 
   const handleSend = () => {
     if (canSend) {
-      onSendMessage(message.trim(), 'text');
+      if (selectedImageUri && onImageMessage) {
+        // Send image with prompt
+        const prompt = message.trim() || 'Analyze this image';
+        onImageMessage(selectedImageUri, prompt);
+        setSelectedImageUri(null);
+      } else {
+        // Send regular text message
+        onSendMessage(message.trim(), 'text');
+      }
       setMessage('');
       setIsExpanded(false);
     }
@@ -77,6 +92,76 @@ export function ChatInputWithVoice({
     }
   };
 
+  const handleImageUpload = async () => {
+    if (!onImageMessage) return;
+
+    try {
+      // Request permissions
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (permissionResult.granted === false) {
+        Alert.alert(
+          'Photo Access Required',
+          'To upload and analyze images, please:\n\n1. Go to iPhone Settings\n2. Find this app\n3. Tap "Photos"\n4. Select "All Photos" or "Selected Photos"',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Open Settings', 
+              onPress: () => {
+                if (Platform.OS === 'ios') {
+                  // Try multiple approaches to get as close as possible
+                  
+                  // Method 1: Try to open directly to app settings (iOS 8+)
+                  Linking.openURL('app-settings:').catch(() => {
+                    
+                    // Method 2: Try to open Photos privacy settings (may not work on newer iOS)
+                    Linking.openURL('App-Prefs:Privacy&path=PHOTOS').catch(() => {
+                      
+                      // Method 3: Try to open Privacy settings
+                      Linking.openURL('App-Prefs:Privacy').catch(() => {
+                        
+                        // Method 4: Fallback to main Settings app
+                        Linking.openURL('App-Prefs:').catch(() => {
+                          console.log('Cannot open settings - user needs to navigate manually');
+                        });
+                      });
+                    });
+                  });
+                }
+              }
+            }
+          ]
+        );
+        return;
+      }
+
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: 'images',
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setSelectedImageUri(asset.uri);
+        setIsExpanded(true); // Expand input to show image attachment
+        
+        // Focus on text input to encourage adding a prompt
+        setTimeout(() => {
+          textInputRef.current?.focus();
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
   const handleVoiceTextConfirmed = (text: string) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onSendMessage(text, 'voice');
@@ -87,9 +172,14 @@ export function ChatInputWithVoice({
     setShowVoiceModal(false);
   };
 
+  const handleRemoveImage = () => {
+    setSelectedImageUri(null);
+    setIsExpanded(false);
+  };
+
   const handleTextChange = (text: string) => {
     setMessage(text);
-    setIsExpanded(text.length > 50 || text.includes('\n'));
+    setIsExpanded(text.length > 50 || text.includes('\n') || selectedImageUri !== null);
   };
 
   const handleFocus = () => {
@@ -97,13 +187,13 @@ export function ChatInputWithVoice({
   };
 
   const handleBlur = () => {
-    if (message.length <= 50 && !message.includes('\n')) {
+    if (message.length <= 50 && !message.includes('\n') && !selectedImageUri) {
       setIsExpanded(false);
     }
   };
 
   const renderActionButton = () => {
-    const hasInput = message.trim().length > 0;
+    const hasInput = message.trim().length > 0 || selectedImageUri !== null;
     
     if (isProcessing) {
       return (
@@ -170,9 +260,21 @@ export function ChatInputWithVoice({
     );
   };
 
-  const renderInputIndicator = () => {
-    // Removed the indicator to keep input area clean
-    return null;
+  const renderImageAttachment = () => {
+    if (!selectedImageUri) return null;
+
+    return (
+      <View style={styles.imageAttachment}>
+        <Image source={{ uri: selectedImageUri }} style={styles.attachedImage} />
+        <TouchableOpacity 
+          style={styles.removeImageButton}
+          onPress={handleRemoveImage}
+          hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
+        >
+          <Text style={styles.removeImageText}>×</Text>
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   return (
@@ -181,39 +283,62 @@ export function ChatInputWithVoice({
         styles.container,
         { paddingBottom: insets.bottom || 16 },
       ]}>
-        <View style={[
-          styles.inputContainer,
-          isExpanded && styles.inputContainerExpanded,
-          disabled && styles.inputContainerDisabled,
-        ]}>
-          <View style={styles.textInputContainer}>
-            <TextInput
-              ref={textInputRef}
-              style={[
-                styles.textInput,
-                isExpanded && styles.textInputExpanded,
-              ]}
-              value={message}
-              onChangeText={handleTextChange}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
-              placeholder={placeholder}
-              placeholderTextColor="#8E8E93"
-              multiline
-              textAlignVertical="top"
-              maxLength={maxLength}
-              editable={!disabled}
-              blurOnSubmit={false}
-              onSubmitEditing={handleSend}
-              returnKeyType="send"
-              enablesReturnKeyAutomatically
-            />
-            {renderInputIndicator()}
+        <View style={styles.inputWrapper}>
+          {/* Input Container - Full Width */}
+          <View style={[
+            styles.inputContainer,
+            isExpanded && styles.inputContainerExpanded,
+            disabled && styles.inputContainerDisabled,
+          ]}>
+            {renderImageAttachment()}
+            <View style={styles.textInputContainer}>
+              <TextInput
+                ref={textInputRef}
+                style={[
+                  styles.textInput,
+                  isExpanded && styles.textInputExpanded,
+                  selectedImageUri && styles.textInputWithImage,
+                ]}
+                value={message}
+                onChangeText={handleTextChange}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+                placeholder={selectedImageUri ? "Add a message about this image..." : placeholder}
+                placeholderTextColor="#8E8E93"
+                multiline
+                textAlignVertical="top"
+                maxLength={maxLength}
+                editable={!disabled}
+                blurOnSubmit={false}
+                onSubmitEditing={handleSend}
+                returnKeyType="send"
+                enablesReturnKeyAutomatically
+              />
+            </View>
           </View>
           
-          <View style={styles.buttonContainer}>
-            {renderCharacterCount()}
-            {renderActionButton()}
+          {/* Button Row - Below Input */}
+          <View style={styles.buttonRow}>
+            <View style={styles.leftButtons}>
+              {onImageMessage && (
+                <TouchableOpacity
+                  style={[
+                    styles.actionButton,
+                    styles.imageButton,
+                    !disabled ? styles.imageButtonActive : styles.actionButtonDisabled,
+                  ]}
+                  onPress={handleImageUpload}
+                  disabled={disabled}
+                >
+                  <Text style={styles.imageButtonText}>📷</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            
+            <View style={styles.rightButtons}>
+              {renderCharacterCount()}
+              {renderActionButton()}
+            </View>
           </View>
         </View>
       </View>
@@ -230,6 +355,7 @@ export function ChatInputWithVoice({
         autoCompleteOnTranscription={autoCompleteOnTranscription}
         placeholder="Tap to record"
       />
+
     </>
   );
 }
@@ -242,16 +368,16 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#E5E5EA',
   },
+  inputWrapper: {
+    maxWidth: isTablet ? '80%' : '100%',
+    alignSelf: isTablet ? 'center' : 'stretch',
+  },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
     backgroundColor: '#F2F2F7',
     borderRadius: 24,
     paddingHorizontal: 16,
     paddingVertical: 8,
     minHeight: 48,
-    maxWidth: isTablet ? '80%' : '100%',
-    alignSelf: isTablet ? 'center' : 'stretch',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -272,7 +398,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   textInputContainer: {
-    flex: 1,
+    width: '100%',
     position: 'relative',
   },
   textInput: {
@@ -285,6 +411,9 @@ const styles = StyleSheet.create({
   textInputExpanded: {
     maxHeight: 200,
   },
+  textInputWithImage: {
+    minHeight: 40,
+  },
   inputIndicator: {
     position: 'absolute',
     right: 8,
@@ -296,16 +425,26 @@ const styles = StyleSheet.create({
     color: '#C7C7CC',
     fontWeight: '500',
   },
-  buttonContainer: {
+  buttonRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginLeft: 8,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+  },
+  leftButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rightButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   characterCount: {
     fontSize: 12,
     color: '#8E8E93',
-    marginBottom: 6,
+    marginRight: 8,
   },
   characterCountWarning: {
     color: '#FF3B30',
@@ -317,7 +456,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
   },
   actionButtonDisabled: {
     backgroundColor: '#C7C7CC',
@@ -352,6 +490,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#FFFFFF',
   },
+  imageButton: {
+    // Specific styles for image button
+  },
+  imageButtonActive: {
+    backgroundColor: '#FF9500',
+  },
+  imageButtonText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
   soundWaveIcon: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -376,5 +524,32 @@ const styles = StyleSheet.create({
   },
   soundWaveLine4: {
     height: 6,
+  },
+  imageAttachment: {
+    paddingBottom: 8,
+    alignItems: 'flex-start',
+  },
+  attachedImage: {
+    width: 120,
+    height: 90,
+    borderRadius: 12,
+    backgroundColor: '#F2F2F7',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeImageText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 16,
   },
 });
