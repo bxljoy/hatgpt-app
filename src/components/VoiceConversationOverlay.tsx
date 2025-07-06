@@ -244,9 +244,7 @@ export const VoiceConversationOverlay: React.FC<VoiceConversationOverlayProps> =
   };
 
   const getCurrentDisplayText = (): string => {
-    if (voiceState === 'speaking' && responseText) {
-      return responseText;
-    }
+    // Only show text during listening (user transcription)
     if (voiceState === 'listening' && currentText) {
       return currentText;
     }

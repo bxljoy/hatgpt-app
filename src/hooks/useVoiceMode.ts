@@ -90,6 +90,7 @@ export const useVoiceMode = (config: VoiceModeConfig = {}): [VoiceModeState, Voi
         playsInSilentModeIOS: true,
         shouldDuckAndroid: true,
         playThroughEarpieceAndroid: false,
+        staysActiveInBackground: false,
       });
     } catch (error) {
       console.error('Error initializing audio session:', error);
@@ -383,16 +384,33 @@ export const useVoiceMode = (config: VoiceModeConfig = {}): [VoiceModeState, Voi
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Play the audio
+      // Configure audio for speaker playback with higher volume
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: false,
+        playThroughEarpieceAndroid: false,
+        staysActiveInBackground: false,
+      });
+
+      // Create and play the audio with maximum volume
       const { sound } = await Audio.Sound.createAsync(
         { uri: audioUri },
-        { shouldPlay: true }
+        { 
+          shouldPlay: true,
+          volume: 1.0,
+          rate: 1.0,
+          shouldCorrectPitch: true,
+        }
       );
       
       soundRef.current = sound;
+      
+      // Set volume to maximum
+      await sound.setVolumeAsync(1.0);
 
       // Set up playback status listener
-      sound.setOnPlaybackStatusUpdate((status) => {
+      sound.setOnPlaybackStatusUpdate(async (status) => {
         if (status.isLoaded && status.didJustFinish) {
           setState(prev => ({
             ...prev,
@@ -400,6 +418,13 @@ export const useVoiceMode = (config: VoiceModeConfig = {}): [VoiceModeState, Voi
             voiceState: 'idle',
             currentResponse: '',
           }));
+          
+          // Restore recording audio mode
+          try {
+            await initializeAudioSession();
+          } catch (error) {
+            console.warn('Failed to restore audio session:', error);
+          }
           
           // Clean up
           sound.unloadAsync();
