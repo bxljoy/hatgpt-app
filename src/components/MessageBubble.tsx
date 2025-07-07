@@ -47,8 +47,7 @@ const MessageBubbleComponent = ({
   ], [isUser]);
 
   const bubbleStyle = useMemo(() => [
-    styles.bubble,
-    isUser ? styles.userBubble : styles.assistantBubble,
+    isUser ? styles.userBubble : styles.assistantMessage,
     message.error && styles.errorBubble,
   ], [isUser, message.error]);
 
@@ -205,28 +204,59 @@ const MessageBubbleComponent = ({
     );
   }, [message.imageUrl, message.imageBase64]);
 
+  if (isUser) {
+    // User message with bubble
+    return (
+      <View style={containerStyle}>
+        <View style={bubbleStyle}>
+          {message.isLoading ? (
+            renderLoadingIndicator()
+          ) : (
+            <>
+              {renderImage()}
+              
+              <Text style={messageTextStyle}>
+                {message.content}
+              </Text>
+              
+              {message.error && renderError()}
+              
+              <View style={styles.messageFooter}>
+                <Text style={timestampStyle}>
+                  {formattedTime}
+                </Text>
+                
+                {renderTokenCount()}
+                {renderAudioButton()}
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  // Assistant message - full width, no bubble
   return (
-    <View style={containerStyle}>
-      <View style={bubbleStyle}>
+    <View style={styles.assistantContainer}>
+      <View style={styles.assistantAvatar}>
+        <Text style={styles.assistantAvatarText}>🎩</Text>
+      </View>
+      
+      <View style={styles.assistantContent}>
         {message.isLoading ? (
           renderLoadingIndicator()
         ) : (
           <>
             {renderImage()}
             
-            {isAssistant ? (
-              <Markdown style={markdownStyles}>
-                {message.content}
-              </Markdown>
-            ) : (
-              <Text style={messageTextStyle}>
-                {message.content}
-              </Text>
-            )}
+            <Markdown style={markdownStyles}>
+              {message.content}
+            </Markdown>
             
             {message.error && renderError()}
             
-            <View style={styles.messageFooter}>
+            <View style={styles.assistantFooter}>
               <Text style={timestampStyle}>
                 {formattedTime}
               </Text>
@@ -268,12 +298,14 @@ const styles = StyleSheet.create({
   assistantMessageContainer: {
     justifyContent: 'flex-start',
   },
-  bubble: {
+  userBubble: {
     maxWidth: isTablet ? '85%' : '90%',
     minWidth: 60,
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderRadius: 20,
+    backgroundColor: '#007AFF',
+    borderBottomRightRadius: 6,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -286,15 +318,40 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  userBubble: {
-    backgroundColor: '#007AFF',
-    borderBottomRightRadius: 6,
+  assistantMessage: {
+    // This is not used anymore - replaced by assistantContainer
   },
-  assistantBubble: {
-    backgroundColor: '#FFFFFF',
-    borderBottomLeftRadius: 6,
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
+  // New ChatGPT-style assistant layout
+  assistantContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: 'flex-start',
+    width: '100%',
+  },
+  assistantAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#10A37F',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    marginTop: 2,
+  },
+  assistantAvatarText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  assistantContent: {
+    flex: 1,
+    paddingRight: 16,
+  },
+  assistantFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    justifyContent: 'flex-start',
   },
   errorBubble: {
     backgroundColor: '#FF3B30',

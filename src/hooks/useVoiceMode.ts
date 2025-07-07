@@ -331,7 +331,47 @@ export const useVoiceMode = (config: VoiceModeConfig = {}): [VoiceModeState, Voi
     }
   }, [whisperApiKey, onError]);
 
-  // Speak response using OpenAI TTS
+  // Helper function to split text into speakable chunks
+  const splitTextIntoChunks = useCallback((text: string): string[] => {
+    // Remove markdown formatting for speech
+    let cleanText = text
+      .replace(/#{1,6}\s+/g, '') // Remove headers
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
+      .replace(/\*(.*?)\*/g, '$1') // Remove italic
+      .replace(/`(.*?)`/g, '$1') // Remove inline code
+      .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links, keep text
+      .replace(/[🎯📚🎨📋🎓🤔⚠️✅🚀🌟💡✨]/g, '') // Remove common emojis
+      .trim();
+
+    // Split into sentences, respecting punctuation
+    const sentences = cleanText
+      .split(/(?<=[.!?])\s+/)
+      .filter(sentence => sentence.trim().length > 0);
+
+    const chunks: string[] = [];
+    let currentChunk = '';
+    const maxChunkLength = 200; // Optimal length for TTS
+
+    for (const sentence of sentences) {
+      if ((currentChunk + sentence).length <= maxChunkLength) {
+        currentChunk += (currentChunk ? ' ' : '') + sentence;
+      } else {
+        if (currentChunk) {
+          chunks.push(currentChunk.trim());
+        }
+        currentChunk = sentence;
+      }
+    }
+
+    if (currentChunk) {
+      chunks.push(currentChunk.trim());
+    }
+
+    return chunks.filter(chunk => chunk.length > 0);
+  }, []);
+
+  // Speak response using progressive chunking for immediate feedback
   const speakResponse = useCallback(async (text: string): Promise<void> => {
     if (!ttsApiKey) {
       const error = 'OpenAI API key not configured';
@@ -341,6 +381,7 @@ export const useVoiceMode = (config: VoiceModeConfig = {}): [VoiceModeState, Voi
     }
 
     try {
+      // Immediately set speaking state
       setState(prev => ({
         ...prev,
         isSpeaking: true,
@@ -348,43 +389,22 @@ export const useVoiceMode = (config: VoiceModeConfig = {}): [VoiceModeState, Voi
         currentResponse: text,
       }));
 
-      const response = await fetch('https://api.openai.com/v1/audio/speech', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${ttsApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'tts-1',
-          input: text,
-          voice: 'alloy',
-          response_format: 'mp3',
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`OpenAI TTS API error: ${response.status}`);
+      // Split text into manageable chunks
+      const chunks = splitTextIntoChunks(text);
+      
+      if (chunks.length === 0) {
+        setState(prev => ({
+          ...prev,
+          isSpeaking: false,
+          voiceState: 'idle',
+          currentResponse: '',
+        }));
+        return;
       }
 
-      const audioBlob = await response.blob();
-      const audioUri = `${FileSystem.cacheDirectory}tts_${Date.now()}.mp3`;
-      
-      // Save audio to file
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64data = reader.result as string;
-          resolve(base64data.split(',')[1]);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(audioBlob);
-      });
+      console.log(`🎤 Speaking response in ${chunks.length} chunks`);
 
-      await FileSystem.writeAsStringAsync(audioUri, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      // Configure audio for speaker playback with higher volume
+      // Configure audio for speaker playback immediately
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
@@ -393,45 +413,149 @@ export const useVoiceMode = (config: VoiceModeConfig = {}): [VoiceModeState, Voi
         staysActiveInBackground: false,
       });
 
-      // Create and play the audio with maximum volume
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: audioUri },
-        { 
-          shouldPlay: true,
-          volume: 1.0,
-          rate: 1.0,
-          shouldCorrectPitch: true,
-        }
-      );
-      
-      soundRef.current = sound;
-      
-      // Set volume to maximum
-      await sound.setVolumeAsync(1.0);
+      // Start generating the first chunk immediately for faster feedback
+      let firstChunkPromise: Promise<string> | null = null;
+      if (chunks.length > 0) {
+        firstChunkPromise = (async () => {
+          const response = await fetch('https://api.openai.com/v1/audio/speech', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${ttsApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'tts-1-hd', // Use HD model for better quality
+              input: chunks[0],
+              voice: 'alloy',
+              response_format: 'mp3',
+              speed: 1.0,
+            }),
+          });
 
-      // Set up playback status listener
-      sound.setOnPlaybackStatusUpdate(async (status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          setState(prev => ({
-            ...prev,
-            isSpeaking: false,
-            voiceState: 'idle',
-            currentResponse: '',
-          }));
-          
-          // Restore recording audio mode
-          try {
-            await initializeAudioSession();
-          } catch (error) {
-            console.warn('Failed to restore audio session:', error);
+          if (!response.ok) {
+            throw new Error(`OpenAI TTS API error: ${response.status}`);
           }
+
+          const audioBlob = await response.blob();
+          const audioUri = `${FileSystem.cacheDirectory}tts_chunk_0_${Date.now()}.mp3`;
           
-          // Clean up
-          sound.unloadAsync();
-          FileSystem.deleteAsync(audioUri, { idempotent: true });
-          soundRef.current = null;
+          // Convert and save audio
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const base64data = reader.result as string;
+              resolve(base64data.split(',')[1]);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(audioBlob);
+          });
+
+          await FileSystem.writeAsStringAsync(audioUri, base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+
+          return audioUri;
+        })();
+      }
+
+      // Process chunks sequentially, starting with the pre-generated first chunk
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        console.log(`🎤 Processing chunk ${i + 1}/${chunks.length}: "${chunk.substring(0, 50)}..."`);
+
+        try {
+          let audioUri: string;
+
+          if (i === 0 && firstChunkPromise) {
+            // Use the pre-generated first chunk for immediate playback
+            audioUri = await firstChunkPromise;
+          } else {
+            // Generate audio for subsequent chunks
+            const response = await fetch('https://api.openai.com/v1/audio/speech', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${ttsApiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'tts-1-hd', // Use HD model for better quality
+                input: chunk,
+                voice: 'alloy',
+                response_format: 'mp3',
+                speed: 1.0,
+              }),
+            });
+
+            if (!response.ok) {
+              throw new Error(`OpenAI TTS API error: ${response.status}`);
+            }
+
+            const audioBlob = await response.blob();
+            audioUri = `${FileSystem.cacheDirectory}tts_chunk_${i}_${Date.now()}.mp3`;
+            
+            // Convert and save audio
+            const base64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64data = reader.result as string;
+                resolve(base64data.split(',')[1]);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(audioBlob);
+            });
+
+            await FileSystem.writeAsStringAsync(audioUri, base64, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+          }
+
+          // Play this chunk immediately
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: audioUri },
+            { 
+              shouldPlay: true,
+              volume: 1.0,
+              rate: 1.0,
+              shouldCorrectPitch: true,
+            }
+          );
+          
+          soundRef.current = sound;
+          await sound.setVolumeAsync(1.0);
+
+          // Wait for this chunk to finish before starting next
+          await new Promise<void>((resolve) => {
+            sound.setOnPlaybackStatusUpdate(async (status) => {
+              if (status.isLoaded && status.didJustFinish) {
+                await sound.unloadAsync();
+                await FileSystem.deleteAsync(audioUri, { idempotent: true });
+                resolve();
+              }
+            });
+          });
+
+        } catch (error) {
+          console.error(`Error processing chunk ${i + 1}:`, error);
+          // Continue with next chunk instead of failing completely
         }
-      });
+      }
+
+      // All chunks completed
+      setState(prev => ({
+        ...prev,
+        isSpeaking: false,
+        voiceState: 'idle',
+        currentResponse: '',
+      }));
+      
+      soundRef.current = null;
+      
+      // Restore recording audio mode
+      try {
+        await initializeAudioSession();
+      } catch (error) {
+        console.warn('Failed to restore audio session:', error);
+      }
 
     } catch (error) {
       console.error('Error speaking response:', error);
@@ -445,7 +569,7 @@ export const useVoiceMode = (config: VoiceModeConfig = {}): [VoiceModeState, Voi
       }));
       if (onError) onError(errorMessage);
     }
-  }, [ttsApiKey, onError]);
+  }, [ttsApiKey, onError, splitTextIntoChunks, initializeAudioSession]);
 
   // Stop speaking
   const stopSpeaking = useCallback(async () => {
