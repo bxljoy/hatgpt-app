@@ -84,31 +84,11 @@ const ConversationItem = memo(({ conversation, isSelected, onPress, onDelete }: 
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={styles.conversationHeader}>
-        <Text 
-          style={titleStyle} 
-          numberOfLines={1}
-        >
-          {conversation.title}
-        </Text>
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={onDelete}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={styles.deleteButtonText}>×</Text>
-        </TouchableOpacity>
-      </View>
-      
       <Text 
-        style={previewStyle} 
-        numberOfLines={2}
+        style={titleStyle} 
+        numberOfLines={1}
       >
-        {previewText}
-      </Text>
-      
-      <Text style={styles.conversationDate}>
-        {formattedDate}
+        {conversation.title}
       </Text>
     </TouchableOpacity>
   );
@@ -357,9 +337,22 @@ const ConversationSidebarComponent = ({
         ]}
       >
         <SafeAreaView style={styles.safeArea}>
-          {/* Header */}
+          {/* Header with Search */}
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Conversations</Text>
+            <View style={styles.searchContainer}>
+              <View style={styles.searchIconContainer}>
+                <Text style={styles.searchIcon}>🔍</Text>
+              </View>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search"
+                placeholderTextColor="#8E8E93"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                returnKeyType="search"
+                clearButtonMode="while-editing"
+              />
+            </View>
             <TouchableOpacity
               style={styles.newButton}
               onPress={handleNewConversation}
@@ -369,22 +362,8 @@ const ConversationSidebarComponent = ({
               <View style={styles.editIcon}>
                 <View style={styles.editPenMain} />
                 <View style={styles.editPenNib} />
-                <View style={styles.editPenLine} />
               </View>
             </TouchableOpacity>
-          </View>
-
-          {/* Search */}
-          <View style={styles.searchContainer}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search..."
-              placeholderTextColor="#8E8E93"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              returnKeyType="search"
-              clearButtonMode="while-editing"
-            />
           </View>
 
           {/* Conversations List */}
@@ -404,8 +383,8 @@ const ConversationSidebarComponent = ({
             windowSize={5}
             initialNumToRender={10}
             getItemLayout={(data, index) => ({
-              length: 80, // Approximate item height
-              offset: 80 * index,
+              length: 60, // Approximate item height
+              offset: 60 * index,
               index,
             })}
           />
@@ -459,25 +438,16 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5EA',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#000000',
+    gap: 12,
   },
   newButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F8F8F8',
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -495,45 +465,45 @@ const styles = StyleSheet.create({
   },
   editPenMain: {
     position: 'absolute',
-    width: 2.5,
-    height: 10,
+    width: 2,
+    height: 12,
     backgroundColor: '#000000',
-    borderRadius: 1.25,
+    borderRadius: 1,
     transform: [{ rotate: '45deg' }],
-    top: 3,
-    left: 7.75,
+    top: 2,
+    left: 8,
   },
   editPenNib: {
     position: 'absolute',
-    width: 3,
-    height: 3,
+    width: 4,
+    height: 4,
     backgroundColor: '#000000',
-    borderRadius: 1.5,
+    borderRadius: 2,
     transform: [{ rotate: '45deg' }],
-    top: 1,
-    left: 7.5,
-  },
-  editPenLine: {
-    position: 'absolute',
-    width: 6,
-    height: 1.5,
-    backgroundColor: '#000000',
-    borderRadius: 0.75,
-    transform: [{ rotate: '45deg' }],
-    bottom: 3,
-    right: 3,
+    top: 0,
+    left: 7,
   },
   searchContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    height: 40,
+  },
+  searchIconContainer: {
+    marginRight: 8,
+  },
+  searchIcon: {
+    fontSize: 16,
+    color: '#8E8E93',
   },
   searchInput: {
-    height: 36,
-    backgroundColor: '#F2F2F7',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    fontSize: 14,
+    flex: 1,
+    fontSize: 16,
     color: '#000000',
+    paddingVertical: 0,
   },
   conversationsList: {
     flex: 1,
@@ -543,30 +513,22 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   conversationItem: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 12,
-    marginVertical: 2,
-    marginHorizontal: 8,
+    backgroundColor: 'transparent',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
   selectedConversationItem: {
-    backgroundColor: '#E3F2FD',
-  },
-  conversationHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
+    backgroundColor: '#F0F0F0',
   },
   conversationTitle: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '400',
     color: '#000000',
-    marginRight: 8,
+    lineHeight: 20,
   },
   selectedConversationTitle: {
-    color: '#1976D2',
+    color: '#000000',
+    fontWeight: '500',
   },
   deleteButton: {
     width: 20,
