@@ -645,20 +645,32 @@ const ChatScreenComponent = () => {
     <MessageSkeleton isUser={false} />
   ), []);
 
+  const handleSuggestionPress = useCallback((suggestion: string) => {
+    handleSendMessage(suggestion, 'text');
+  }, [handleSendMessage]);
+
   const renderEmptyState = useCallback(() => (
     <View style={styles.emptyState}>
       <View style={styles.suggestionsContainer}>
-        <TouchableOpacity style={styles.suggestionCard}>
-          <Text style={styles.suggestionTitle}>Create a painting</Text>
-          <Text style={styles.suggestionSubtitle}>in Renaissance-style</Text>
+        <TouchableOpacity 
+          style={styles.suggestionCard}
+          onPress={() => handleSuggestionPress("What's in the news in Stockholm today?")}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.suggestionTitle}>What's in the news</Text>
+          <Text style={styles.suggestionSubtitle}>in Stockholm today?</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.suggestionCard}>
-          <Text style={styles.suggestionTitle}>Count the number of items</Text>
-          <Text style={styles.suggestionSubtitle}>in an image</Text>
+        <TouchableOpacity 
+          style={styles.suggestionCard}
+          onPress={() => handleSuggestionPress("Help me plan a weekend trip")}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.suggestionTitle}>Help me plan</Text>
+          <Text style={styles.suggestionSubtitle}>a weekend trip</Text>
         </TouchableOpacity>
       </View>
     </View>
-  ), []);
+  ), [handleSuggestionPress]);
 
   const renderScrollToBottomButton = () => {
     if (!showScrollButton) return null;
