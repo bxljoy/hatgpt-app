@@ -701,7 +701,7 @@ const ChatScreenComponent = () => {
       </TouchableOpacity>
       
       <Text style={styles.headerTitle} numberOfLines={1}>
-        ChatGPT 4o
+        HatGPT 4o
       </Text>
       
       
