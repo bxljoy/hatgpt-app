@@ -647,10 +647,16 @@ const ChatScreenComponent = () => {
 
   const renderEmptyState = useCallback(() => (
     <View style={styles.emptyState}>
-      <Text style={styles.emptyStateTitle}>Start a conversation</Text>
-      <Text style={styles.emptyStateText}>
-        Type a message below to begin chatting
-      </Text>
+      <View style={styles.suggestionsContainer}>
+        <TouchableOpacity style={styles.suggestionCard}>
+          <Text style={styles.suggestionTitle}>Create a painting</Text>
+          <Text style={styles.suggestionSubtitle}>in Renaissance-style</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.suggestionCard}>
+          <Text style={styles.suggestionTitle}>Count the number of items</Text>
+          <Text style={styles.suggestionSubtitle}>in an image</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   ), []);
 
@@ -683,19 +689,18 @@ const ChatScreenComponent = () => {
       </TouchableOpacity>
       
       <Text style={styles.headerTitle} numberOfLines={1}>
-        {conversationTitle}
+        ChatGPT 4o
       </Text>
       
       
       <TouchableOpacity
-        style={styles.newConversationButton}
+        style={styles.refreshButton}
         onPress={handleNewConversation}
         activeOpacity={0.7}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <View style={styles.editIcon}>
-          <View style={styles.editPenBody} />
-          <View style={styles.editPenTip} />
+        <View style={styles.refreshIcon}>
+          <View style={styles.refreshArrow} />
         </View>
       </TouchableOpacity>
     </View>
@@ -839,7 +844,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     color: '#000000',
     textAlign: 'center',
@@ -848,45 +853,27 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 40,
   },
-  newConversationButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#007AFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  editIcon: {
-    width: 18,
-    height: 18,
-    position: 'relative',
+  refreshButton: {
+    width: 32,
+    height: 32,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  editPenBody: {
-    position: 'absolute',
-    width: 2.5,
-    height: 14,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 1.25,
-    transform: [{ rotate: '45deg' }],
-    top: 1,
-    left: 7.75,
+  refreshIcon: {
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  editPenTip: {
-    position: 'absolute',
-    width: 4,
-    height: 4,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 2,
+  refreshArrow: {
+    width: 16,
+    height: 16,
+    borderWidth: 2,
+    borderColor: '#000000',
+    borderRadius: 8,
+    borderTopColor: 'transparent',
+    borderRightColor: 'transparent',
     transform: [{ rotate: '45deg' }],
-    top: -1,
-    left: 6.75,
   },
   keyboardAvoidingView: {
     flex: 1,
@@ -903,22 +890,39 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: 16,
+    paddingBottom: 40,
   },
-  emptyStateTitle: {
-    fontSize: 24,
-    fontWeight: '600',
+  suggestionsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+    paddingHorizontal: 4,
+  },
+  suggestionCard: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    padding: 12,
+    minHeight: 60,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  suggestionTitle: {
+    fontSize: 14,
+    fontWeight: '500',
     color: '#000000',
-    marginBottom: 8,
-    textAlign: 'center',
+    lineHeight: 18,
   },
-  emptyStateText: {
-    fontSize: 16,
+  suggestionSubtitle: {
+    fontSize: 13,
     color: '#666666',
-    textAlign: 'center',
-    lineHeight: 22,
+    marginTop: 2,
+    lineHeight: 16,
   },
   errorBanner: {
     backgroundColor: '#FF3B30',

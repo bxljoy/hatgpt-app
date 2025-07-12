@@ -386,65 +386,76 @@ export function ChatInputWithVoice({
         { paddingBottom: insets.bottom || 16 },
       ]}>
         <View style={styles.inputWrapper}>
-          {/* Input Container - Full Width */}
-          <View style={[
-            styles.inputContainer,
-            isExpanded && styles.inputContainerExpanded,
-            disabled && styles.inputContainerDisabled,
-          ]}>
-            {renderImageAttachment()}
-            <View style={styles.textInputContainer}>
-              <TextInput
-                ref={textInputRef}
-                style={[
-                  styles.textInput,
-                  isExpanded && styles.textInputExpanded,
-                  selectedImageUri && styles.textInputWithImage,
-                ]}
-                value={message}
-                onChangeText={handleTextChange}
-                onFocus={handleFocus}
-                onBlur={handleBlur}
-                placeholder={selectedImageUri ? "Add a message about this image..." : placeholder}
-                placeholderTextColor="#8E8E93"
-                multiline
-                textAlignVertical="top"
-                maxLength={maxLength}
-                editable={!disabled}
-                blurOnSubmit={false}
-                onSubmitEditing={handleSend}
-                returnKeyType="send"
-                enablesReturnKeyAutomatically
-              />
-            </View>
-          </View>
-          
-          {/* Button Row - Below Input */}
-          <View style={styles.buttonRow}>
-            <View style={styles.leftButtons}>
-              {onImageMessage && (
-                <View>
-                  <TouchableOpacity
-                    style={[
-                      styles.actionButton,
-                      styles.attachmentButton,
-                      !disabled ? styles.attachmentButtonActive : styles.actionButtonDisabled,
-                    ]}
-                    onPress={handleAttachmentPress}
-                    disabled={disabled}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.attachmentButtonText}>+</Text>
-                  </TouchableOpacity>
-                  {renderAttachmentMenu()}
-                </View>
-              )}
+          {/* Main Input Row */}
+          <View style={styles.mainInputRow}>
+            {/* Plus Button */}
+            {onImageMessage && (
+              <View>
+                <TouchableOpacity
+                  style={[
+                    styles.actionButton,
+                    styles.attachmentButton,
+                    !disabled ? styles.attachmentButtonActive : styles.actionButtonDisabled,
+                  ]}
+                  onPress={handleAttachmentPress}
+                  disabled={disabled}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.attachmentButtonText}>+</Text>
+                </TouchableOpacity>
+                {renderAttachmentMenu()}
+              </View>
+            )}
+            
+            {/* Input Container */}
+            <View style={[
+              styles.inputContainer,
+              isExpanded && styles.inputContainerExpanded,
+              disabled && styles.inputContainerDisabled,
+            ]}>
+              {renderImageAttachment()}
+              <View style={styles.textInputContainer}>
+                <TextInput
+                  ref={textInputRef}
+                  style={[
+                    styles.textInput,
+                    isExpanded && styles.textInputExpanded,
+                    selectedImageUri && styles.textInputWithImage,
+                  ]}
+                  value={message}
+                  onChangeText={handleTextChange}
+                  onFocus={handleFocus}
+                  onBlur={handleBlur}
+                  placeholder={selectedImageUri ? "Add a message about this image..." : placeholder}
+                  placeholderTextColor="#8E8E93"
+                  multiline
+                  textAlignVertical="top"
+                  maxLength={maxLength}
+                  editable={!disabled}
+                  blurOnSubmit={false}
+                  onSubmitEditing={handleSend}
+                  returnKeyType="send"
+                  enablesReturnKeyAutomatically
+                />
+              </View>
             </View>
             
-            <View style={styles.rightButtons}>
-              {renderCharacterCount()}
-              {renderActionButton()}
-            </View>
+            {/* Microphone Button */}
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                styles.voiceButton,
+                canUseVoice ? styles.voiceButtonActive : styles.actionButtonDisabled,
+              ]}
+              onPress={handleVoiceInput}
+              disabled={!canUseVoice}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.voiceButtonText}>🎤</Text>
+            </TouchableOpacity>
+            
+            {/* Voice/Send Button */}
+            {renderActionButton()}
           </View>
         </View>
       </View>
@@ -478,7 +489,13 @@ const styles = StyleSheet.create({
     maxWidth: isTablet ? '80%' : '100%',
     alignSelf: isTablet ? 'center' : 'stretch',
   },
+  mainInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
   inputContainer: {
+    flex: 1,
     backgroundColor: '#F2F2F7',
     borderRadius: 24,
     paddingHorizontal: 16,
@@ -531,22 +548,6 @@ const styles = StyleSheet.create({
     color: '#C7C7CC',
     fontWeight: '500',
   },
-  buttonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 8,
-  },
-  leftButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  rightButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   characterCount: {
     fontSize: 12,
     color: '#8E8E93',
@@ -557,9 +558,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   actionButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -578,33 +579,34 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   voiceButton: {
-    // Specific styles for voice button
+    backgroundColor: '#E5E5EA',
   },
   voiceButtonActive: {
-    backgroundColor: '#00C851',
+    backgroundColor: '#E5E5EA',
   },
   voiceButtonText: {
-    fontSize: 16,
+    fontSize: 18,
+    color: '#000000',
   },
   conversationButton: {
     // Specific styles for conversation button
   },
   conversationButtonActive: {
-    backgroundColor: '#10A37F',
+    backgroundColor: '#000000',
   },
   conversationButtonText: {
     fontSize: 16,
     color: '#FFFFFF',
   },
   attachmentButton: {
-    // Specific styles for attachment button
+    backgroundColor: '#E5E5EA',
   },
   attachmentButtonActive: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#E5E5EA',
   },
   attachmentButtonText: {
     fontSize: 18,
-    color: '#FFFFFF',
+    color: '#000000',
     fontWeight: '300',
     lineHeight: 18,
   },
