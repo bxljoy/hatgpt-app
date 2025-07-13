@@ -8,7 +8,9 @@ import {
   Dimensions,
   Platform,
   Image,
+  Alert,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import Markdown from 'react-native-markdown-display';
 import { Message } from '@/types';
 
@@ -222,6 +224,26 @@ const MessageBubbleComponent = ({
     );
   }, [message.metadata?.grounding]);
 
+  const handleCopyMessage = useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(message.content);
+      Alert.alert('Copied', 'Message copied to clipboard');
+    } catch (error) {
+      console.error('Failed to copy message:', error);
+      Alert.alert('Error', 'Failed to copy message');
+    }
+  }, [message.content]);
+
+  const renderCopyButton = useCallback(() => (
+    <TouchableOpacity
+      style={styles.copyButton}
+      onPress={handleCopyMessage}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    >
+      <Text style={styles.copyButtonText}>📋</Text>
+    </TouchableOpacity>
+  ), [handleCopyMessage]);
+
   const renderImage = useCallback(() => {
     const imageSource = message.imageUrl || (message.imageBase64 ? `data:image/jpeg;base64,${message.imageBase64}` : null);
     if (!imageSource) return null;
@@ -259,8 +281,11 @@ const MessageBubbleComponent = ({
                   {formattedTime}
                 </Text>
                 
-                {renderTokenCount()}
-                {renderAudioButton()}
+                <View style={styles.messageActions}>
+                  {renderTokenCount()}
+                  {renderAudioButton()}
+                  {renderCopyButton()}
+                </View>
               </View>
             </>
           )}
@@ -296,8 +321,11 @@ const MessageBubbleComponent = ({
                 {formattedTime}
               </Text>
               
-              {renderTokenCount()}
-              {renderAudioButton()}
+              <View style={styles.messageActions}>
+                {renderTokenCount()}
+                {renderAudioButton()}
+                {renderCopyButton()}
+              </View>
             </View>
           </>
         )}
@@ -386,7 +414,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
   },
   errorBubble: {
     backgroundColor: '#FF3B30',
@@ -513,5 +541,19 @@ const styles = StyleSheet.create({
     color: '#718096',
     fontStyle: 'italic',
     marginTop: 4,
+  },
+  messageActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  copyButton: {
+    padding: 4,
+    borderRadius: 4,
+    backgroundColor: 'transparent',
+  },
+  copyButtonText: {
+    fontSize: 14,
+    opacity: 0.7,
   },
 });

@@ -43,7 +43,6 @@ export const VoiceConversationOverlay: React.FC<VoiceConversationOverlayProps> =
   responseText = '',
   enableHaptics = true,
 }) => {
-  const [showText, setShowText] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(screenHeight)).current;
   const orbScaleAnim = useRef(new Animated.Value(0.8)).current;
@@ -150,11 +149,18 @@ export const VoiceConversationOverlay: React.FC<VoiceConversationOverlayProps> =
 
   const startProcessingAnimation = () => {
     Animated.loop(
-      Animated.timing(waveAnim, {
-        toValue: 1,
-        duration: 1500,
-        useNativeDriver: true,
-      })
+      Animated.sequence([
+        Animated.timing(waveAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(waveAnim, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
     ).start();
   };
 
@@ -163,35 +169,19 @@ export const VoiceConversationOverlay: React.FC<VoiceConversationOverlayProps> =
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 1.15,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 0.95,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1.1,
-          duration: 200,
+          duration: 600,
           useNativeDriver: true,
         }),
         Animated.timing(pulseAnim, {
           toValue: 1,
-          duration: 400,
+          duration: 600,
           useNativeDriver: true,
         }),
       ])
     ).start();
   };
 
-  const handleOrbPress = () => {
-    if (enableHaptics) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    onToggleListening();
-  };
-
+  // Pan responder for swipe gestures
   const panResponder = PanResponder.create({
     onMoveShouldSetPanResponder: (evt, gestureState) => {
       return Math.abs(gestureState.dy) > 20;
@@ -202,54 +192,52 @@ export const VoiceConversationOverlay: React.FC<VoiceConversationOverlayProps> =
       }
     },
     onPanResponderRelease: (evt, gestureState) => {
-      if (gestureState.dy > 100 || gestureState.vy > 1000) {
+      if (gestureState.dy > 150 || gestureState.vy > 1.5) {
         onClose();
       } else {
         Animated.spring(slideAnim, {
           toValue: 0,
+          tension: 100,
+          friction: 8,
           useNativeDriver: true,
         }).start();
       }
     },
   });
 
-  const getOrbColor = (): string[] => {
+  const handleOrbPress = () => {
+    if (enableHaptics) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    onToggleListening();
+  };
+
+  const getOrbColor = () => {
     switch (voiceState) {
-      case 'idle':
-        return ['#007AFF', '#0056CC'];
       case 'listening':
-        return ['#FF3B30', '#CC0000'];
+        return ['#FF6B6B', '#FF8E53'];
       case 'processing':
-        return ['#FF9500', '#CC7700'];
+        return ['#4ECDC4', '#44A08D'];
       case 'speaking':
-        return ['#34C759', '#28A745'];
+        return ['#A8E6CF', '#7FCDCD'];
       default:
-        return ['#007AFF', '#0056CC'];
+        return ['#667eea', '#764ba2'];
     }
   };
 
-  const getStateText = (): string => {
+  const getStateText = () => {
     switch (voiceState) {
-      case 'idle':
-        return 'Tap to speak';
       case 'listening':
         return 'Listening...';
       case 'processing':
-        return 'AI is thinking...';
+        return 'Processing...';
       case 'speaking':
-        return 'AI is speaking...';
+        return 'Speaking...';
       default:
-        return 'Tap to speak';
+        return 'Tap to start';
     }
   };
 
-  const getCurrentDisplayText = (): string => {
-    // Only show text during listening (user transcription)
-    if (voiceState === 'listening' && currentText) {
-      return currentText;
-    }
-    return '';
-  };
 
   return (
     <Modal
@@ -332,12 +320,6 @@ export const VoiceConversationOverlay: React.FC<VoiceConversationOverlayProps> =
               {/* State text */}
               <Text style={styles.stateText}>{getStateText()}</Text>
 
-              {/* Current text display */}
-              {getCurrentDisplayText() && (
-                <View style={styles.textContainer}>
-                  <Text style={styles.currentText}>{getCurrentDisplayText()}</Text>
-                </View>
-              )}
 
               {/* Controls */}
               <View style={styles.controls}>
@@ -407,33 +389,15 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: 90,
-    borderWidth: 2,
-    borderColor: '#007AFF',
-    top: 0,
-    left: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   stateText: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 24,
+    fontWeight: '300',
     color: '#FFFFFF',
+    textAlign: 'center',
     marginBottom: 20,
-    textAlign: 'center',
-  },
-  textContainer: {
-    maxWidth: '100%',
-    marginHorizontal: 20,
-    marginBottom: 40,
-    padding: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  currentText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    textAlign: 'center',
-    lineHeight: 24,
+    letterSpacing: 1,
   },
   controls: {
     position: 'absolute',

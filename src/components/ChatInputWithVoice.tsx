@@ -16,7 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 
-import { VoiceInputModal } from './VoiceInputModal';
+import { VoiceRecordingOverlay } from './VoiceRecordingOverlay';
+import { useVoiceToText } from '../hooks/useVoiceToText';
 
 interface ChatInputWithVoiceProps {
   onSendMessage: (message: string, type: 'text' | 'voice') => void;
@@ -60,6 +61,26 @@ export function ChatInputWithVoice({
   const textInputRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
 
+  // Voice-to-text functionality
+  const voiceToText = useVoiceToText({
+    autoCompleteOnTranscription: true,
+    enableTextEditing: false,
+    onResult: (result) => {
+      if (result.text.trim()) {
+        onSendMessage(result.text.trim(), 'voice');
+      }
+      setShowVoiceModal(false);
+    },
+    onError: (error) => {
+      console.error('Voice transcription error:', error);
+      Alert.alert('Voice Error', error);
+      setShowVoiceModal(false);
+    },
+    onCancel: () => {
+      setShowVoiceModal(false);
+    },
+  });
+
   const canSend = (message.trim().length > 0 || selectedImageUri) && !disabled && !isProcessing;
   const canUseVoice = enableVoiceToText && !disabled && !isProcessing;
 
@@ -79,10 +100,16 @@ export function ChatInputWithVoice({
     }
   };
 
-  const handleVoiceInput = () => {
+  const handleVoiceInput = async () => {
     if (canUseVoice) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setShowVoiceModal(true);
+      try {
+        await voiceToText.startRecording();
+      } catch (error) {
+        console.error('Failed to start recording:', error);
+        setShowVoiceModal(false);
+      }
     }
   };
 
@@ -219,14 +246,24 @@ export function ChatInputWithVoice({
     }
   };
 
-  const handleVoiceTextConfirmed = (text: string) => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onSendMessage(text, 'voice');
+  const handleVoiceCancel = () => {
+    voiceToText.cancel();
     setShowVoiceModal(false);
   };
 
-  const handleVoiceCancel = () => {
-    setShowVoiceModal(false);
+  const handleStopListening = async () => {
+    try {
+      await voiceToText.stopRecording();
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+      setShowVoiceModal(false);
+    }
+  };
+
+  const handleToggleListening = () => {
+    if (voiceToText.state === 'recording') {
+      handleStopListening();
+    }
   };
 
   const handleRemoveImage = () => {
@@ -459,16 +496,15 @@ export function ChatInputWithVoice({
       </View>
 
       {/* Voice Input Modal */}
-      <VoiceInputModal
+      <VoiceRecordingOverlay
         isVisible={showVoiceModal}
-        onClose={() => setShowVoiceModal(false)}
-        onTextConfirmed={handleVoiceTextConfirmed}
-        onCancel={handleVoiceCancel}
-        maxRecordingDuration={300000} // 5 minutes
-        language={language}
-        enableTextEditing={enableTextEditing}
-        autoCompleteOnTranscription={autoCompleteOnTranscription}
-        placeholder="Tap to record"
+        voiceState={voiceToText.state}
+        onClose={handleVoiceCancel}
+        onStartListening={() => voiceToText.startRecording()}
+        onStopListening={handleStopListening}
+        onToggleListening={handleToggleListening}
+        isListening={voiceToText.state === 'recording'}
+        enableHaptics={true}
       />
 
     </>
