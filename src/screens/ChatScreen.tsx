@@ -79,6 +79,7 @@ const ChatScreenComponent = () => {
     };
   }, []);
 
+
   // AI Agent hook for enhanced processing
   const {
     isLoading: agentLoading,
@@ -827,7 +828,7 @@ const ChatScreenComponent = () => {
       <KeyboardAvoidingView
         style={styles.keyboardAvoidingView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 140 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? -10 : 0}
       >
         <FlatList
           ref={flatListRef}
@@ -1017,12 +1018,12 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 40,
+    paddingBottom: 16,
   },
   suggestionsContainer: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 20,
+    marginBottom: 8,
     paddingHorizontal: 4,
   },
   suggestionCard: {

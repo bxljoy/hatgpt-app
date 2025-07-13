@@ -381,7 +381,7 @@ export function ChatInputWithVoice({
       
       <View style={[
         styles.container,
-        { paddingBottom: insets.bottom || 16 },
+        { paddingBottom: Math.max(insets.bottom - 8, 4) },
       ]}>
         <View style={styles.inputWrapper}>
           {/* Main Input Row */}
