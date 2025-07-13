@@ -46,8 +46,8 @@ const ChatScreenComponent = () => {
   const [currentPlayingAudio, setCurrentPlayingAudio] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState(() => route.params?.conversationId || `conv_${Date.now()}`);
   const [conversation, setConversation] = useState<Conversation | null>(null);
-  const [conversationTitle, setConversationTitle] = useState('HatGPT 4o');
-  const [selectedModel, setSelectedModel] = useState<ModelType>('gpt-4o');
+  const [conversationTitle, setConversationTitle] = useState('HatGPT Gemini');
+  const [selectedModel, setSelectedModel] = useState<ModelType>('gemini-2.5-flash');
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
