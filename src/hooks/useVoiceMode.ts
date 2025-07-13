@@ -3,6 +3,16 @@ import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 
+// Global recording state coordination (same pattern as useAudioRecorder)
+declare global {
+  var globalRecordingInProgress: boolean;
+}
+
+// Initialize global recording state if not already set
+if (typeof global.globalRecordingInProgress === 'undefined') {
+  global.globalRecordingInProgress = false;
+}
+
 export type VoiceState = 'idle' | 'listening' | 'processing' | 'speaking';
 
 interface VoiceModeConfig {
@@ -130,6 +140,8 @@ export const useVoiceMode = (config: VoiceModeConfig = {}): [VoiceModeState, Voi
       } catch (error) {
         console.error('Error stopping recording:', error);
       }
+      // Clear global recording flag when exiting voice mode
+      global.globalRecordingInProgress = false;
     }
 
     // Stop any ongoing playback
@@ -174,7 +186,16 @@ export const useVoiceMode = (config: VoiceModeConfig = {}): [VoiceModeState, Voi
       return;
     }
 
+    // Check if another recording is already in progress
+    if (global.globalRecordingInProgress) {
+      setState(prev => ({ ...prev, error: 'Another recording is already in progress' }));
+      onError?.('Another recording is already in progress');
+      return;
+    }
+
     try {
+      // Set global recording flag
+      global.globalRecordingInProgress = true;
       setState(prev => ({
         ...prev,
         isListening: true,
@@ -199,6 +220,8 @@ export const useVoiceMode = (config: VoiceModeConfig = {}): [VoiceModeState, Voi
 
     } catch (error) {
       console.error('Error starting recording:', error);
+      // Clear global recording flag on error
+      global.globalRecordingInProgress = false;
       setState(prev => ({
         ...prev,
         isListening: false,
@@ -228,6 +251,9 @@ export const useVoiceMode = (config: VoiceModeConfig = {}): [VoiceModeState, Voi
       await recordingRef.current.stopAndUnloadAsync();
       const uri = recordingRef.current.getURI();
       recordingRef.current = null;
+      
+      // Clear global recording flag
+      global.globalRecordingInProgress = false;
 
       if (uri) {
         setState(prev => ({ ...prev, recordingUri: uri }));
@@ -255,6 +281,8 @@ export const useVoiceMode = (config: VoiceModeConfig = {}): [VoiceModeState, Voi
 
     } catch (error) {
       console.error('Error stopping recording:', error);
+      // Clear global recording flag on error
+      global.globalRecordingInProgress = false;
       setState(prev => ({
         ...prev,
         isListening: false,
