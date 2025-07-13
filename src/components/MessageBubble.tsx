@@ -189,6 +189,39 @@ const MessageBubbleComponent = ({
     );
   }, [message.tokenCount]);
 
+  const renderGroundingSources = useCallback(() => {
+    const grounding = message.metadata?.grounding;
+    if (!grounding || !grounding.sources || grounding.sources.length === 0) return null;
+    
+    return (
+      <View style={styles.groundingContainer}>
+        <Text style={styles.groundingTitle}>🔍 Sources:</Text>
+        {grounding.sources.map((source, index) => (
+          <TouchableOpacity
+            key={index}
+            style={styles.sourceItem}
+            onPress={() => {
+              // TODO: Open source URL in browser
+              console.log('Opening source:', source.uri);
+            }}
+          >
+            <Text style={styles.sourceTitle} numberOfLines={1}>
+              {source.title || 'Source'}
+            </Text>
+            <Text style={styles.sourceUrl} numberOfLines={1}>
+              {source.uri}
+            </Text>
+          </TouchableOpacity>
+        ))}
+        {grounding.webSearchQueries && grounding.webSearchQueries.length > 0 && (
+          <Text style={styles.searchQueries}>
+            Searched: {grounding.webSearchQueries.join(', ')}
+          </Text>
+        )}
+      </View>
+    );
+  }, [message.metadata?.grounding]);
+
   const renderImage = useCallback(() => {
     const imageSource = message.imageUrl || (message.imageBase64 ? `data:image/jpeg;base64,${message.imageBase64}` : null);
     if (!imageSource) return null;
@@ -255,6 +288,8 @@ const MessageBubbleComponent = ({
             </Markdown>
             
             {message.error && renderError()}
+            
+            {renderGroundingSources()}
             
             <View style={styles.assistantFooter}>
               <Text style={timestampStyle}>
@@ -438,5 +473,45 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 200,
     borderRadius: 12,
+  },
+  groundingContainer: {
+    marginTop: 12,
+    marginBottom: 8,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E1E5E9',
+  },
+  groundingTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4A5568',
+    marginBottom: 8,
+  },
+  sourceItem: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 6,
+    padding: 8,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#E1E5E9',
+  },
+  sourceTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#2D3748',
+    marginBottom: 2,
+  },
+  sourceUrl: {
+    fontSize: 11,
+    color: '#4A5568',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  searchQueries: {
+    fontSize: 11,
+    color: '#718096',
+    fontStyle: 'italic',
+    marginTop: 4,
   },
 });

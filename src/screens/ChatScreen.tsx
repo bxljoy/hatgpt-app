@@ -17,10 +17,12 @@ import { MessageBubble } from '@/components/MessageBubble';
 import { ChatInputWithVoice } from '@/components/ChatInputWithVoice';
 import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { VoiceConversationOverlay } from '@/components/VoiceConversationOverlay';
+import { ModelSelector } from '@/components/ModelSelector';
 import { useOpenAI } from '@/hooks/useOpenAI';
 import { useAIAgent } from '@/hooks/useAIAgent';
 import { useVoiceMode } from '@/hooks/useVoiceMode';
-import { Message } from '@/types';
+import { Message, ModelType } from '@/types';
+import { GeminiService } from '@/services/GeminiService';
 import { RootStackParamList } from '@/navigation/AppNavigator';
 import { convertOpenAIResponseToMessage, generateConversationTitle, getSystemPrompt } from '@/utils/openai';
 import { ConversationStorageService } from '@/services/conversationStorage';
@@ -39,11 +41,14 @@ const ChatScreenComponent = () => {
   const navigation = useNavigation();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGeminiLoading, setIsGeminiLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [currentPlayingAudio, setCurrentPlayingAudio] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState(() => route.params?.conversationId || `conv_${Date.now()}`);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [conversationTitle, setConversationTitle] = useState('HatGPT 4o');
+  const [selectedModel, setSelectedModel] = useState<ModelType>('gpt-4o');
+  const [showModelSelector, setShowModelSelector] = useState(false);
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -216,17 +221,17 @@ const ChatScreenComponent = () => {
       // Reset for new conversation
       setMessages([]);
       setConversation(null);
-      setConversationTitle('HatGPT 4o');
+      setConversationTitle(selectedModel === 'gpt-4o' ? 'HatGPT 4o' : 'HatGPT Gemini');
       // Reset scroll states for new conversation
       setIsAtBottom(true);
       setShowScrollButton(false);
       setWasAtBottomBeforeProcessing(true);
     }
-  }, [conversationId]);
+  }, [conversationId, selectedModel]);
 
   // Scroll to bottom when messages are loaded from conversation history
   useEffect(() => {
-    if (messages.length > 0 && conversation && !isLoading && !agentLoading && !openAILoading) {
+    if (messages.length > 0 && conversation && !isLoading && !agentLoading && !openAILoading && !isGeminiLoading) {
       // This means we just loaded a conversation from history
       setTimeout(() => {
         if (flatListRef.current) {
@@ -243,7 +248,7 @@ const ChatScreenComponent = () => {
         }
       }, 600);
     }
-  }, [messages.length, conversation?.id, isLoading, agentLoading, openAILoading]);
+  }, [messages.length, conversation?.id, isLoading, agentLoading, openAILoading, isGeminiLoading]);
 
   const loadConversation = useCallback(async (loadConversationId: string) => {
     await measureAsync('load_conversation', async () => {
@@ -303,7 +308,7 @@ const ChatScreenComponent = () => {
   const generateConversationTitle = useCallback((messages: Message[]): string => {
     // Find the first user message
     const firstUserMessage = messages.find(msg => msg.role === 'user');
-    if (!firstUserMessage) return 'HatGPT 4o';
+    if (!firstUserMessage) return selectedModel === 'gpt-4o' ? 'HatGPT 4o' : 'HatGPT Gemini';
 
     let content = firstUserMessage.content.trim();
     
@@ -332,7 +337,7 @@ const ChatScreenComponent = () => {
     }
     
     return content;
-  }, []);
+  }, [selectedModel]);
 
   const saveCurrentConversation = async (currentMessages: Message[]) => {
     try {
@@ -340,7 +345,7 @@ const ChatScreenComponent = () => {
       let title = conversationTitle;
       
       // Only generate a new title if this is a completely new conversation (has the default title)
-      if (title === 'HatGPT 4o' && currentMessages.length >= 1) {
+      if ((title === 'HatGPT 4o' || title === 'HatGPT Gemini') && currentMessages.length >= 1) {
         // First, generate a quick local title from the first message
         title = generateConversationTitle(currentMessages);
         setConversationTitle(title);
@@ -362,7 +367,7 @@ const ChatScreenComponent = () => {
         }
       }
       // For existing conversations, preserve the existing title
-      else if (conversation && conversation.title && conversation.title !== 'HatGPT 4o') {
+      else if (conversation && conversation.title && conversation.title !== 'HatGPT 4o' && conversation.title !== 'HatGPT Gemini') {
         title = conversation.title;
       }
 
@@ -423,26 +428,72 @@ const ChatScreenComponent = () => {
     setWasAtBottomBeforeProcessing(isAtBottom);
 
     try {
-      // Use AI Agent for enhanced processing
-      await processQuery(messageContent, conversationId);
-    } catch (error) {
-      console.error('Error sending message with AI Agent:', error);
-      
-      // Fallback to basic OpenAI if agent fails
-      try {
-        console.log('Falling back to basic OpenAI...');
-        await sendMessageWithContext(messageContent, conversationId);
-      } catch (fallbackError) {
-        console.error('Fallback also failed:', fallbackError);
+      if (selectedModel === 'gemini-2.5-flash') {
+        // Use Gemini API directly
+        const geminiApiKey = process.env.EXPO_PUBLIC_GOOGLE_GEMINI_API_KEY;
+        if (!geminiApiKey) {
+          throw new Error('Gemini API key not found');
+        }
+
+        setIsGeminiLoading(true);
+        const geminiService = new GeminiService(geminiApiKey);
+        const response = await geminiService.sendMessage(updatedMessages, {
+          temperature: 0.7,
+          maxTokens: 4096,
+          systemPrompt: getSystemPrompt('chatgpt'),
+        });
+
+        const assistantMessage = geminiService.convertResponseToMessage(response, conversationId);
         
-        // Update user message with error state
+        setMessages(currentMessages => {
+          const newMessages = [...currentMessages, assistantMessage];
+          saveCurrentConversation(newMessages);
+          return newMessages;
+        });
+
+        // If voice mode is active, speak the response
+        if (voiceModeState.isVoiceModeActive) {
+          voiceModeActions.setVoiceState('speaking');
+          await voiceModeActions.speakResponse(assistantMessage.content);
+        }
+      } else {
+        // Use AI Agent for enhanced processing (OpenAI)
+        await processQuery(messageContent, conversationId);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      
+      // Fallback to basic OpenAI if agent fails and it's not Gemini
+      if (selectedModel !== 'gemini-2.5-flash') {
+        try {
+          console.log('Falling back to basic OpenAI...');
+          await sendMessageWithContext(messageContent, conversationId);
+        } catch (fallbackError) {
+          console.error('Fallback also failed:', fallbackError);
+          
+          // Update user message with error state
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === userMessage.id 
+                ? { ...msg, error: 'Failed to send message' }
+                : msg
+            )
+          );
+        }
+      } else {
+        // Update user message with error state for Gemini
         setMessages(prev => 
           prev.map(msg => 
             msg.id === userMessage.id 
-              ? { ...msg, error: 'Failed to send message' }
+              ? { ...msg, error: 'Failed to send message to Gemini' }
               : msg
           )
         );
+      }
+    } finally {
+      // Reset Gemini loading state
+      if (selectedModel === 'gemini-2.5-flash') {
+        setIsGeminiLoading(false);
       }
     }
   };
@@ -502,16 +553,42 @@ const ChatScreenComponent = () => {
         setWasAtBottomBeforeProcessing(isAtBottom);
 
         try {
-          console.log('[ChatScreen] Sending image message to AI Agent:', {
-            messageId: userMessage.id,
-            hasImageBase64: !!userMessage.imageBase64,
-            conversationId,
-          });
-          
-          // Use AI Agent for image processing
-          await processImageQuery(userMessage, conversationId);
-          
-          console.log('[ChatScreen] Successfully sent image message');
+          if (selectedModel === 'gemini-2.5-flash') {
+            // Use Gemini API for image processing
+            const geminiApiKey = process.env.EXPO_PUBLIC_GOOGLE_GEMINI_API_KEY;
+            if (!geminiApiKey) {
+              throw new Error('Gemini API key not found');
+            }
+
+            setIsGeminiLoading(true);
+            const geminiService = new GeminiService(geminiApiKey);
+            const response = await geminiService.sendMessage(updatedMessages, {
+              temperature: 0.7,
+              maxTokens: 4096,
+              systemPrompt: getSystemPrompt('chatgpt'),
+            });
+
+            const assistantMessage = geminiService.convertResponseToMessage(response, conversationId);
+            
+            setMessages(currentMessages => {
+              const newMessages = [...currentMessages, assistantMessage];
+              saveCurrentConversation(newMessages);
+              return newMessages;
+            });
+
+            console.log('[ChatScreen] Successfully sent image message to Gemini');
+          } else {
+            // Use AI Agent for image processing (OpenAI)
+            console.log('[ChatScreen] Sending image message to AI Agent:', {
+              messageId: userMessage.id,
+              hasImageBase64: !!userMessage.imageBase64,
+              conversationId,
+            });
+            
+            await processImageQuery(userMessage, conversationId);
+            
+            console.log('[ChatScreen] Successfully sent image message');
+          }
         } catch (error) {
           console.error('Error sending image message:', error);
           
@@ -519,10 +596,15 @@ const ChatScreenComponent = () => {
           setMessages(prev => 
             prev.map(msg => 
               msg.id === userMessage.id 
-                ? { ...msg, error: 'Failed to send image message' }
+                ? { ...msg, error: `Failed to send image message${selectedModel === 'gemini-2.5-flash' ? ' to Gemini' : ''}` }
                 : msg
             )
           );
+        } finally {
+          // Reset Gemini loading state
+          if (selectedModel === 'gemini-2.5-flash') {
+            setIsGeminiLoading(false);
+          }
         }
       };
 
@@ -605,7 +687,7 @@ const ChatScreenComponent = () => {
       setConversationId(newConversationId);
       setMessages([]);
       setConversation(null);
-      setConversationTitle('HatGPT 4o');
+      setConversationTitle(selectedModel === 'gpt-4o' ? 'HatGPT 4o' : 'HatGPT Gemini');
       
       // Reset scroll states for new conversation
       setIsAtBottom(true);
@@ -624,7 +706,7 @@ const ChatScreenComponent = () => {
       console.error('Failed to create new conversation:', error);
       Alert.alert('Error', 'Failed to create new conversation');
     }
-  }, [conversationId, clearConversationHistory]);
+  }, [conversationId, clearConversationHistory, selectedModel]);
 
   // Toggle sidebar visibility
   const toggleSidebar = useCallback(() => {
@@ -700,9 +782,16 @@ const ChatScreenComponent = () => {
         </View>
       </TouchableOpacity>
       
-      <Text style={styles.headerTitle} numberOfLines={1}>
-        HatGPT 4o
-      </Text>
+      <TouchableOpacity 
+        style={styles.headerTitleContainer}
+        onPress={() => setShowModelSelector(!showModelSelector)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {selectedModel === 'gpt-4o' ? 'HatGPT 4o' : 'HatGPT Gemini'}
+        </Text>
+        <Text style={styles.modelIndicator}>▼</Text>
+      </TouchableOpacity>
       
       
       <TouchableOpacity
@@ -721,6 +810,19 @@ const ChatScreenComponent = () => {
   return (
     <SafeAreaView style={styles.container}>
       {renderHeader()}
+      
+      {/* Model Selector Dropdown */}
+      {showModelSelector && (
+        <View style={styles.modelSelectorContainer}>
+          <ModelSelector
+            selectedModel={selectedModel}
+            onModelSelect={(model) => {
+              setSelectedModel(model);
+              setShowModelSelector(false);
+            }}
+          />
+        </View>
+      )}
       
       <KeyboardAvoidingView
         style={styles.keyboardAvoidingView}
@@ -742,11 +844,11 @@ const ChatScreenComponent = () => {
           scrollEventThrottle={100}
           onContentSizeChange={(contentWidth, contentHeight) => {
             // Auto-scroll to show AI thinking animation when processing starts
-            if ((agentLoading || openAILoading) && messages.length > 0) {
+            if ((agentLoading || openAILoading || isGeminiLoading) && messages.length > 0) {
               scrollToShowProcessing();
             }
             // Only auto-scroll after AI completes if user was at bottom before processing
-            else if (!agentLoading && !openAILoading && wasAtBottomBeforeProcessing && messages.length > 0) {
+            else if (!agentLoading && !openAILoading && !isGeminiLoading && wasAtBottomBeforeProcessing && messages.length > 0) {
               setTimeout(() => {
                 flatListRef.current?.scrollToEnd({ animated: true });
               }, 100);
@@ -760,7 +862,7 @@ const ChatScreenComponent = () => {
             />
           }
           ListEmptyComponent={renderEmptyState}
-          ListFooterComponent={(agentLoading || openAILoading) ? renderLoadingMessage : undefined}
+          ListFooterComponent={(agentLoading || openAILoading || isGeminiLoading) ? renderLoadingMessage : undefined}
           removeClippedSubviews={Platform.OS === 'android'}
           maxToRenderPerBatch={10}
           windowSize={5}
@@ -772,8 +874,8 @@ const ChatScreenComponent = () => {
         <ChatInputWithVoice
           onSendMessage={handleSendMessage}
           onImageMessage={handleImageMessage}
-          isProcessing={agentLoading || openAILoading}
-          disabled={isLoading || agentLoading || openAILoading}
+          isProcessing={agentLoading || openAILoading || isGeminiLoading}
+          disabled={isLoading || agentLoading || openAILoading || isGeminiLoading}
           enableVoiceToText={true}
           enableTextEditing={false}
           autoCompleteOnTranscription={true}
@@ -854,13 +956,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
     borderRadius: 1,
   },
-  headerTitle: {
+  headerTitleContainer: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 16,
+  },
+  headerTitle: {
     fontSize: 17,
     fontWeight: '600',
     color: '#000000',
     textAlign: 'center',
-    marginHorizontal: 16,
+  },
+  modelIndicator: {
+    fontSize: 12,
+    color: '#666666',
+    marginLeft: 4,
   },
   headerSpacer: {
     width: 40,
@@ -998,5 +1110,22 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#007AFF',
     fontWeight: '600',
+  },
+  modelSelectorContainer: {
+    position: 'absolute',
+    top: 80, // Below header
+    left: 16,
+    right: 16,
+    zIndex: 1000,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
   },
 });

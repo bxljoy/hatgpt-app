@@ -25,6 +25,19 @@ export interface Message {
       fileSize?: number;
       format?: string;
     };
+    grounding?: {
+      webSearchQueries: string[];
+      sources: Array<{
+        uri?: string;
+        title?: string;
+      }>;
+      citations: Array<{
+        startIndex?: number;
+        endIndex?: number;
+        text?: string;
+        sourceIndices: number[];
+      }>;
+    };
   };
 }
 
@@ -167,7 +180,7 @@ export interface AppState {
 export interface AppSettings {
   // API Settings
   openaiApiKey: string;
-  model: 'gpt-4o';
+  model: ModelType;
   maxTokens: number;
   temperature: number;
   systemPrompt?: string;
@@ -275,6 +288,19 @@ export interface StorageConversation {
         fileSize?: number;
         format?: string;
       };
+      grounding?: {
+        webSearchQueries: string[];
+        sources: Array<{
+          uri?: string;
+          title?: string;
+        }>;
+        citations: Array<{
+          startIndex?: number;
+          endIndex?: number;
+          text?: string;
+          sourceIndices: number[];
+        }>;
+      };
     };
   }[];
   title: string;
@@ -340,7 +366,7 @@ export interface StorageSettings {
   voiceType: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
   autoPlayAudio: boolean;
   speechRate: number;
-  model: 'gpt-4o';
+  model: ModelType;
   maxTokens: number;
   temperature: number;
   systemPrompt?: string;
@@ -361,7 +387,7 @@ export type RootStackParamList = {
 // Utility Types
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type VoiceType = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
-export type ModelType = 'gpt-4o';
+export type ModelType = 'gpt-4o' | 'gemini-2.5-flash';
 export type ThemeType = 'light' | 'dark' | 'system';
 export type AudioQualityType = 'standard' | 'hd';
 export type RecordingStatus = 'idle' | 'recording' | 'paused' | 'processing' | 'completed' | 'error';
